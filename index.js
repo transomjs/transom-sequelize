@@ -64,7 +64,7 @@ function TransomSequelize() {
                 const generatedMeta = require(metadataFile);
                 const attributeMeta = allTables[tbl].attributes || {};
                 const attributeHooks = allTables[tbl].hooks || {};
-                
+
                 // Lay the attributeMeta overtop of the generatedMeta.
                 const comboMeta = {};
                 for (let column in generatedMeta) {
@@ -86,11 +86,13 @@ function TransomSequelize() {
                   throw new Error(`'${options.modelName}' already exists in Sequelize.`);
                 }
 
+                debug(`Initializing ${tbl} Model [${Object.keys(attributeHooks).join(', ')}]`);
+
                 // Create and initialize the model with sequelize.
                 class model extends Sequelize.Model {}
                 model.init(comboMeta, options);
 
-                // Adding class level methods (Static)
+                // Adding class level (Static) methods
                 const statics = allTables[tbl].statics || {};
                 for (let staticKey in statics) {
                   if (model[staticKey]) {
@@ -98,6 +100,7 @@ function TransomSequelize() {
                       `Failed to add static function, '${staticKey}' already exists on the ${tbl} Model.`
                     );
                   }
+                  debug(`Adding static function ${staticKey} to ${tbl} Model.`);
                   model[staticKey] =
                     typeof statics[staticKey] === 'function'
                       ? statics[staticKey]
@@ -118,6 +121,7 @@ function TransomSequelize() {
                       `Failed to add instance method, '${methodKey}' already exists on the ${tbl} Model.`
                     );
                   }
+                  debug(`Adding instance method ${methodKey} to ${tbl} Model.`);
                   model.prototype[methodKey] =
                     typeof methods[methodKey] === 'function'
                       ? methods[methodKey]
@@ -136,25 +140,6 @@ function TransomSequelize() {
             sequelize
           });
           sequelizeRoutes.setupModelHandler();
-
-          // search for something
-          console.log('A----------------------------');
-          const employees = sequelize.models['employees'];
-          console.log('Static method:', employees.helloWorld());
-          employees.findAll({ where: { firstName: 'shaw' } }).then(result => {
-            console.log('N----------------------------');
-            console.log('employees[0]:', result[0].get());
-            console.log('X-----------------------------');
-            console.log('Instance method:', result[0].fullname());
-            console.log('Z-----------------------------');
-          });
-
-          // search for something else
-          // console.log('-----------------------------');
-          // const Carrier = sequelize.models['Carrier'];
-          // Carrier.findAll({ where: {xname: 'ralph'} }).then(result => {
-          //   console.log('Carriers:', result[0].get());
-          // });
         })
         .catch(err => {
           console.error('Unable to connect to the database:', err.message || err);
