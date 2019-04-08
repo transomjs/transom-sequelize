@@ -92,6 +92,9 @@ function TransomSequelize() {
                 class model extends Sequelize.Model {}
                 model.init(comboMeta, options);
 
+                // Copy the meta to the model for custom querying options later!
+                model.__meta = comboMeta; 
+
                 // Adding class level (Static) methods
                 const statics = allTables[tbl].statics || {};
                 for (let staticKey in statics) {
