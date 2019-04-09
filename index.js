@@ -35,7 +35,7 @@ function TransomSequelize() {
           console.log(`Connection to ${database} has been established.`);
 
           const overwrite = options.overwrite === false ? false : true;
-          const metaPath = path.join(__dirname, '..', options.directory || 'sequelize-metadata');
+          const metaPath = path.join(__dirname, '..', '..', '..', options.directory || 'sequelize-metadata');
 
           const sequelizeMeta = new SequelizeMeta(sequelize, {
             directory: metaPath,
