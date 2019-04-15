@@ -29,6 +29,10 @@ function TransomSequelize() {
       delete options.config.password;
 
       const sequelize = new Sequelize(database, username, password, options.config);
+
+      const regKey = options.sequelizeKey || 'sequelize';
+      server.registry.set(regKey, sequelize);
+
       sequelize
         .authenticate()
         .then(() => {
