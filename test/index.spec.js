@@ -12,7 +12,7 @@ describe('index', function() {
         done();
     });
 
-	it('transomMongoose is an Object with initialize and preStart', function() {
+	it('transomSequelize is an Object with initialize and preStart', function() {
 		expect(true).to.be.true;
     });
     

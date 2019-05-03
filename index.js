@@ -33,6 +33,18 @@ function TransomSequelize() {
       const regKey = options.sequelizeKey || 'sequelize';
       server.registry.set(regKey, sequelize);
 
+      const dialect = options.config.dialect;
+      const dateStringify = options.config.dateStringify;
+
+      if (dialect === 'mssql') {
+        // Apply fix for inserting dates on MS SQL Server, override timezone formatting.
+        Sequelize.DATE.prototype._stringify = dateStringify || function _stringify(date, options) {
+          return this._applyTimezone(date, options).format('YYYY-MM-DD HH:mm:ss.SSS');
+        };
+      } else if (options.config.dateStringify) {
+        Sequelize.DATE.prototype._stringify = dateStringify;
+      }
+
       sequelize
         .authenticate()
         .then(() => {
@@ -97,7 +109,7 @@ function TransomSequelize() {
                 model.init(comboMeta, options);
 
                 // Copy the meta to the model for custom querying options later!
-                model.__meta = comboMeta; 
+                model.__meta = comboMeta;
 
                 // Adding class level (Static) methods
                 const statics = allTables[tbl].statics || {};
@@ -152,8 +164,6 @@ function TransomSequelize() {
           console.error('Unable to connect to the database:', err.message || err);
           reject(err);
         });
-
-      debug('options.config', options.config);
       resolve();
     });
   };
