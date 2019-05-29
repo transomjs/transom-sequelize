@@ -154,10 +154,7 @@ function TransomSequelize() {
           });
         })
         .then(() => {
-          const sequelizeRoutes = new SequelizeRoutes({
-            server,
-            sequelize
-          });
+          const sequelizeRoutes = new SequelizeRoutes(server,options);
           sequelizeRoutes.setupModelHandler();
         })
         .catch(err => {
