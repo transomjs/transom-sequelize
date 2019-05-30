@@ -1,5 +1,12 @@
 # @transomjs/transom-sequelize change log
 
+## 1.0.15
+- refacored modelFunction to cleanup Promises
+- stripped commented code
+- using strong types for query values
+- fixed like operator queries
+- many others
+
 ## 1.0.6
 - adding sequelize to the transom server registry
 
