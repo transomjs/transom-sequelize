@@ -192,8 +192,7 @@ describe('handlerUtils', function() {
   });
 
 
-  // getStrongPkValue,
-  it('can convert PK attributes to typed PK values', function() {
+  it('can convert numeric PK attributes to typed PK values', function() {
     const handlerUtils = new HandlerUtils();
 
     // Single column Integer Pk
@@ -233,8 +232,58 @@ describe('handlerUtils', function() {
     expect(function() {
       handlerUtils.getStrongPkValue('123', orderSkuModel);
     }).to.throw('Primary key not defined');
-    
+  });
 
+  it('can convert non-unicode string PK attributes to Object PK value', function() {
+    const handlerUtils = new HandlerUtils();
+
+    // Single column String Pk (VARCHAR)
+    const orderSkuIdVal = "cf942ab5-81fb-4f24-8701-3b70716988fc";
+    const orderSkuModel = {
+      name: 'OrderSkuModel',
+      primaryKeyAttributes: ['id'],
+      rawAttributes: {
+        id: {
+          type: DataTypes.STRING(255),
+          allowNull: false,
+          primaryKey: true,
+          unicode: false, // Forces a new String() object result!
+          field: 'order_sku_code'
+        }
+      }
+    };
+    // getStrongPkValue will return an Object when unicode: false 
+    // to sidestep the default Sequelize behaviour of prefixing 
+    // ALL String parameters with "N" on mssql dialect.
+    const orderSkuIdResult = handlerUtils.getStrongPkValue(orderSkuIdVal, orderSkuModel);
+    expect(`${orderSkuIdResult}`).to.be.equal(orderSkuIdVal);
+    expect(typeof orderSkuIdResult).to.be.equal('object');
+  });
+
+  it('can convert unicode string PK attributes to string PK value', function() {
+    const handlerUtils = new HandlerUtils();
+
+    // Single column String Pk
+    const orderSkuIdVal = "3e3a38d0-0ea2-480b-8af3-16db2a7e41a7";
+    const orderSkuModel = {
+      name: 'OrderSkuModel',
+      primaryKeyAttributes: ['id'],
+      rawAttributes: {
+        id: {
+          type: DataTypes.STRING(255),
+          allowNull: false,
+          primaryKey: true,
+          unicode: true, //  Returns a primitive String result!
+          field: 'order_sku_code'
+        }
+      }
+    };
+    // getStrongPkValue will return a primitive String when unicode: true
+    // this satisfies the default Sequelize behaviour of prefixing 
+    // ALL String parameters with "N" on mssql dialect.
+    const orderSkuIdResult = handlerUtils.getStrongPkValue(orderSkuIdVal, orderSkuModel);
+    expect(orderSkuIdResult).to.be.equal(orderSkuIdVal);
+    expect(typeof orderSkuIdResult).to.be.equal('string');
   });
 
   // getDataTypeClause
@@ -246,24 +295,66 @@ describe('handlerUtils', function() {
       rawAttributes: mssqlMeta
     }
  
+    // Equals (non-unicode)
     const queryObj = handlerUtils.getDataTypeClause(orderModel, 'createdBy', 'James');
     expect(queryObj.toString()).to.equal('James');
+    expect(typeof queryObj).to.equal('object');
 
-    const queryObj2 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~James');
-    // testing symbols, without using deep equals
-    expect(queryObj2[Op.like].valueOf()).to.equal('%James%');
-    expect(queryObj2[Op.like].toString()).to.equal('%James%');
-    expect(`${queryObj2[Op.like]}`).to.equal('%James%');
+    // Equals (unicode)
+    const queryObj1 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', 'Judy');
+    expect(queryObj1).to.equal('Judy');
+    expect(typeof queryObj1).to.equal('string');
 
-    const queryObj3 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~<James');
-    expect(queryObj3[Op.like].toString()).to.equal('%James');
+    // NOTE: When testing Objects that use symbols as keys, we cannot use deepEquals.
 
-    const queryObj4 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~>James');
-    expect(queryObj4[Op.like].toString()).to.equal('James%');
-  });
+    // Like operator
+    const queryObj2 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '~James');
+    expect(queryObj2[Op.like]).to.equal('%James%');
 
-  it('handlerUtils is an Object', function() {
-    expect(true).to.be.true;
+    // Starts-with Like operator
+    const queryObj3 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '~<James');
+    expect(queryObj3[Op.like]).to.equal('%James');
+
+    // Ends-with Like operator
+    const queryObj4 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '~>James');
+    expect(queryObj4[Op.like]).to.equal('James%');
+
+    // Like operator on a non-String attribute
+    expect(() => {
+      handlerUtils.getDataTypeClause(orderModel, 'updatedDate', '~>1979');
+    }).to.throw('Like operator is only allowed on string/text/char attributes');
+
+    // Greater-than operator
+    const queryObj5 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '>James');
+    expect(queryObj5[Op.gt]).to.equal('James');
+
+    // Greater-than-or-equals operator
+    const queryObj6 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '>=James');
+    expect(queryObj6[Op.gte]).to.equal('James');
+
+    // Less-than operator
+    const queryObj7 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '<James');
+    expect(queryObj7[Op.lt]).to.equal('James');
+
+    // Less-than-or-equals operator
+    const queryObj8 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '<=James');
+    expect(queryObj8[Op.lte]).to.equal('James');
+
+    // Not-null operator
+    const queryObj9 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '!isnull');
+    expect(queryObj9[Op.ne]).to.equal(null);
+
+    // Is-null operator
+    const queryObj9a = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', 'isnull');
+    expect(queryObj9a).to.equal(null);
+
+    // Not-equal operator
+    const queryObjA = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '!James');
+    expect(queryObjA[Op.ne]).to.equal('James');
+
+    // In-list operator
+    const queryObjB = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '[James,Judy,Michael]');
+    expect(queryObjB[Op.in]).to.have.members(['James', 'Judy', 'Michael']);    
   });
 
   after(function(done) {
