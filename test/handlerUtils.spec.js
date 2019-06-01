@@ -1,7 +1,8 @@
 'use strict';
 const chai = require('chai');
 const expect = chai.expect;
-const { DataTypes } = require('sequelize');
+const assert = chai.assert
+const { DataTypes, Op } = require('sequelize');
 const HandlerUtils = require('../lib/handlerUtils');
 const mssqlMeta = require('./mssqlMeta');
 
@@ -237,15 +238,28 @@ describe('handlerUtils', function() {
   });
 
   // getDataTypeClause
-  it('can convert attribute values to Sequelize queries', function() {
+  it('can convert attribute query values to Sequelize queries', function() {
     const handlerUtils = new HandlerUtils();
 
-    // TODO!
-    // Single column Integer Pk
-    const orderSkuIdVal = "132456";
-    const orderSkuIdResult = 132456; // handlerUtils.getStrongPkValue(orderSkuIdVal, orderSkuModel);
-    expect(`${orderSkuIdResult}`).to.be.equal(orderSkuIdVal);
-    expect(typeof orderSkuIdResult).to.be.equal('number');
+    const orderModel = {
+      name: 'Order',
+      rawAttributes: mssqlMeta
+    }
+ 
+    const queryObj = handlerUtils.getDataTypeClause(orderModel, 'createdBy', 'James');
+    expect(queryObj.toString()).to.equal('James');
+
+    const queryObj2 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~James');
+    // testing symbols, without using deep equals
+    expect(queryObj2[Op.like].valueOf()).to.equal('%James%');
+    expect(queryObj2[Op.like].toString()).to.equal('%James%');
+    expect(`${queryObj2[Op.like]}`).to.equal('%James%');
+
+    const queryObj3 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~<James');
+    expect(queryObj3[Op.like].toString()).to.equal('%James');
+
+    const queryObj4 = handlerUtils.getDataTypeClause(orderModel, 'createdBy', '~>James');
+    expect(queryObj4[Op.like].toString()).to.equal('James%');
   });
 
   it('handlerUtils is an Object', function() {
