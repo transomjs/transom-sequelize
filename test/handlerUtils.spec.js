@@ -1,7 +1,6 @@
 'use strict';
 const chai = require('chai');
 const expect = chai.expect;
-const assert = chai.assert
 const { DataTypes, Op } = require('sequelize');
 const HandlerUtils = require('../lib/handlerUtils');
 const mssqlMeta = require('./mssqlMeta');
@@ -121,6 +120,42 @@ describe('handlerUtils', function() {
   });
 
   // buildQuery, // coming back to this.
+  it('can build a query...', function() {
+    const handlerUtils = new HandlerUtils();
+
+    // Count
+    const qry = {
+      op: 'count'
+    };
+    const req = {
+      params: {
+        active: "true",
+        price: ">=100",
+        other: "This is an extra!",
+        _sort: "price"
+      }
+    };
+    const entity = {
+      model:{
+        __meta: mssqlMeta,
+        name: 'Order',
+        rawAttributes: mssqlMeta
+      }
+    }; 
+    const result = handlerUtils.buildQuery(qry, req, entity);
+/*
+where:Object {active: true, price: Object}
+active:true
+price:Object {Symbol(gte): 100}
+*/
+expect(result.where).to.be.an.instanceOf(Object);
+expect(result.where.active).to.be.equal(true);
+expect(result.where.price).to.be.an.instanceOf(Object);
+expect(result.where.price[Op.gte]).to.be.equal(100);
+expect(Object.keys(result.where.price)).to.be.empty;
+// expect(`${result}`).to.be.equal(createdByVal);
+    // expect(typeof result).to.be.equal('object');
+  });
 
   // getStrongTypeValue,
   it('can return strong types based on the meta', function() {
@@ -135,7 +170,7 @@ describe('handlerUtils', function() {
     expect(typeof result).to.be.equal('object');
 
     const updatedByVal = "Blue Oyster";
-    const updatedByMeta = mssqlMeta.updatedBy; // NVARCHAR (Default Sequelize is Unicode!)
+    const updatedByMeta = mssqlMeta.updatedBy; // NVARCHAR (Default Sequelize is Unicode on mssql!)
     const updatedResult = handlerUtils.getStrongTypeValue(updatedByVal, updatedByMeta);
     expect(updatedResult).to.be.equal(updatedByVal);
     expect(typeof updatedResult).to.be.equal('string');
@@ -318,6 +353,8 @@ describe('handlerUtils', function() {
     // Ends-with Like operator
     const queryObj4 = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '~>James');
     expect(queryObj4[Op.like]).to.equal('James%');
+    expect(Object.keys(queryObj4)).to.be.empty;
+    expect(Object.getOwnPropertySymbols(queryObj4)).to.have.members([Op.like]);
 
     // Like operator on a non-String attribute
     expect(() => {
