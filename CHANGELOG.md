@@ -1,7 +1,10 @@
 # @transomjs/transom-sequelize change log
 
+## 1.0.16
+- Adding tests for handlerUtils
+
 ## 1.0.15
-- refacored modelFunction to cleanup Promises
+- refactored modelFunction to cleanup Promises
 - stripped commented code
 - using strong types for query values
 - fixed like operator queries
