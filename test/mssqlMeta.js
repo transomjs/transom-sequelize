@@ -63,7 +63,8 @@ module.exports = {
 			field: 'created_by'
 		},
 		updatedDate: {
-			type: DataTypes.DATE,
+            type: DataTypes.DATE,
+            queryable: false,
 			allowNull: true,
 			comment: null,
 			field: 'updated_date'

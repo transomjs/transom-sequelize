@@ -119,96 +119,205 @@ describe('handlerUtils', function() {
     }).to.throw('Invalid entry in the _select list: ' + invalidAttrib2);
   });
 
-  // buildQuery, // coming back to this.
-  it('can build a query...', function() {
-    const handlerUtils = new HandlerUtils();
+  describe(' buildQuery() can create queries from metadata', function() {
+    function createBuildQueryParameters() {
+      const query = {
+        op: 'count'
+      };
 
-    // Count
-    const qry = {
-      op: 'count'
-    };
-    const req = {
-      params: {
-        active: "true",
-        price: ">=100",
-        other: "This is an extra!",
-        _sort: "price"
+      const req = {
+        params: {
+          active: 'true',
+          price: '>=100',
+          other: 'This is an extra!',
+          _sort: 'price',
+          _skip: null,
+          _limit: null
+        }
+      };
+
+      const entity = {
+        model: {
+          __meta: mssqlMeta,
+          name: 'Order',
+          rawAttributes: mssqlMeta
+        }
+      };
+
+      return {
+        query,
+        req,
+        entity
+      };
+    }
+
+    it('can build a Count query', function() {
+      const handlerUtils = new HandlerUtils();
+
+      const args = createBuildQueryParameters();
+      const result = handlerUtils.buildQuery(args.query, args.req, args.entity);
+
+      expect(result.where).to.be.an.instanceOf(Object);
+      expect(Object.keys(result)).to.have.members(['where']);
+
+      expect(result.where.active).to.be.equal(true);
+      expect(result.where.price).to.be.an.instanceOf(Object);
+      expect(result.where.price[Op.gte]).to.be.equal(100);
+      expect(Object.keys(result.where.price)).to.be.empty;
+      expect(Object.getOwnPropertySymbols(result.where.price)).to.have.members([Op.gte]);
+    });
+
+    it('can build a Count query with multiple args', function() {
+      const handlerUtils = new HandlerUtils();
+
+      const args = createBuildQueryParameters();
+      args.req.params.price = ['>=100', '<=500'];
+      const result = handlerUtils.buildQuery(args.query, args.req, args.entity);
+
+      expect(result.where).to.be.an.instanceOf(Object);
+      expect(Object.keys(result)).to.have.members(['where']);
+
+      expect(result.where.active).to.be.equal(true);
+      expect(result.where.price).to.be.an.instanceOf(Object);
+      expect(result.where.price[Op.and]).to.be.an.instanceOf(Array);
+      expect(Object.keys(result.where.price)).to.be.empty;
+      expect(Object.getOwnPropertySymbols(result.where.price)).to.have.members([Op.and]);
+
+      expect(result.where.price[Op.and]).to.be.an.instanceOf(Array);
+      expect(result.where.price[Op.and].length).to.be.equal(2);
+      expect(result.where.price[Op.and][0]).to.be.an.instanceOf(Object);
+      expect(result.where.price[Op.and][1]).to.be.an.instanceOf(Object);
+
+
+      // Checking in indeterminate order!
+      let wasTested = 0;
+      for (var i = 0; i < result.where.price[Op.and].length; i++) {
+        wasTested++;
+        const entry = result.where.price[Op.and][i];
+        if (entry[Op.gte]) {
+          expect(Object.getOwnPropertySymbols(entry)).to.have.members([Op.gte]);
+          expect(entry[Op.gte]).to.be.equal(100);
+        } else {
+          expect(Object.getOwnPropertySymbols(entry)).to.have.members([Op.lte]);
+          expect(entry[Op.lte]).to.be.equal(500);
+        }
       }
-    };
-    const entity = {
-      model:{
-        __meta: mssqlMeta,
-        name: 'Order',
-        rawAttributes: mssqlMeta
-      }
-    }; 
-    const result = handlerUtils.buildQuery(qry, req, entity);
-/*
-where:Object {active: true, price: Object}
-active:true
-price:Object {Symbol(gte): 100}
-*/
-expect(result.where).to.be.an.instanceOf(Object);
-expect(result.where.active).to.be.equal(true);
-expect(result.where.price).to.be.an.instanceOf(Object);
-expect(result.where.price[Op.gte]).to.be.equal(100);
-expect(Object.keys(result.where.price)).to.be.empty;
-// expect(`${result}`).to.be.equal(createdByVal);
-    // expect(typeof result).to.be.equal('object');
-  });
+      expect(wasTested).to.be.equal(2, "Found the expected query parameters")
+    });
+
+    it('can build a Find query with sort', function() {
+      const handlerUtils = new HandlerUtils();
+
+      const args = createBuildQueryParameters();
+      args.query.op = 'find';
+
+      const result = handlerUtils.buildQuery(args.query, args.req, args.entity);
+
+      expect(result.where).to.be.an.instanceOf(Object);
+      expect(Object.keys(result)).to.have.members(['limit', 'offset', 'order', 'where']);
+      expect(result.limit).to.be.equal(1000);
+      expect(result.offset).to.be.equal(0);
+
+      // Sort order
+      expect(result.order).to.be.an.instanceOf(Array);
+      expect(result.order.length).to.be.equal(1);
+      expect(result.order[0]).to.be.instanceOf(Array);
+      expect(result.order[0][0]).to.be.equal('price');
+
+      // Where
+      expect(result.where.active).to.be.equal(true);
+      expect(result.where.price).to.be.an.instanceOf(Object);
+      expect(result.where.price[Op.gte]).to.be.equal(100);
+      expect(Object.keys(result.where.price)).to.be.empty;
+      expect(Object.getOwnPropertySymbols(result.where.price)).to.have.members([Op.gte]);
+    });
+
+    it('can build a Find query, with skip & limit', function() {
+      const handlerUtils = new HandlerUtils();
+
+      const args = createBuildQueryParameters();
+      args.query.op = 'find';
+      args.req.params._skip = 50;
+      args.req.params._limit = 25;
+      args.req.params.price = 123; // produce simple equals
+      args.req.params.active = 'false';
+      delete args.req.params._sort; // no sort this time!
+
+      const result = handlerUtils.buildQuery(args.query, args.req, args.entity);
+
+      expect(result.where).to.be.an.instanceOf(Object);
+      expect(Object.keys(result)).to.have.members(['limit', 'offset', 'where']);
+      expect(result.limit).to.be.equal(25);
+      expect(result.offset).to.be.equal(50);
+      expect(result.where.active).to.be.equal(false);
+      expect(typeof result.where.price).to.be.equal('number');
+      expect(result.where.price).to.be.equal(123);
+    });
+
+    it('can throw error when queryable is false', function() {
+      const handlerUtils = new HandlerUtils();
+
+      const args = createBuildQueryParameters();
+      args.req.params.updatedDate = new Date();
+
+      expect(function() {
+        handlerUtils.buildQuery(args.query, args.req, args.entity);
+      }).to.throw('Order.updatedDate is not a queryable attribute.');
+    });
+  }); // End of buildQuery describe
 
   // getStrongTypeValue,
   it('can return strong types based on the meta', function() {
     const handlerUtils = new HandlerUtils();
 
     // Strings
-    const createdByVal = "Red Robin";
+    const createdByVal = 'Red Robin';
     const createdByMeta = mssqlMeta.createdBy; // VARCHAR
     const result = handlerUtils.getStrongTypeValue(createdByVal, createdByMeta);
     expect(result.toString()).to.be.equal(createdByVal);
     expect(`${result}`).to.be.equal(createdByVal);
     expect(typeof result).to.be.equal('object');
 
-    const updatedByVal = "Blue Oyster";
+    const updatedByVal = 'Blue Oyster';
     const updatedByMeta = mssqlMeta.updatedBy; // NVARCHAR (Default Sequelize is Unicode on mssql!)
     const updatedResult = handlerUtils.getStrongTypeValue(updatedByVal, updatedByMeta);
     expect(updatedResult).to.be.equal(updatedByVal);
     expect(typeof updatedResult).to.be.equal('string');
 
     // Dates
-    const updatedDateVal = "2014-01-31T12:30:58.123Z";
+    const updatedDateVal = '2014-01-31T12:30:58.123Z';
     const updatedDateResult = handlerUtils.getStrongTypeValue(updatedDateVal, mssqlMeta.updatedDate);
     expect(updatedDateResult).to.be.instanceOf(Object);
-    expect(updatedDateResult.getTime()).to.be.equal(new Date("2014-01-31T12:30:58.123Z").getTime());
+    expect(updatedDateResult.getTime()).to.be.equal(new Date('2014-01-31T12:30:58.123Z').getTime());
 
-    const updatedDateVal2 = "2017-01-31";
+    const updatedDateVal2 = '2017-01-31';
     const updatedDateResult2 = handlerUtils.getStrongTypeValue(updatedDateVal2, mssqlMeta.updatedDate);
     expect(updatedDateResult2).to.be.instanceOf(Object);
-    expect(updatedDateResult2.getTime()).to.be.equal(new Date("2017-01-31T00:00:00.000Z").getTime());
+    expect(updatedDateResult2.getTime()).to.be.equal(new Date('2017-01-31T00:00:00.000Z').getTime());
 
     // Numbers
-    const numberVal = "789.456";
+    const numberVal = '789.456';
     const numberValResult = handlerUtils.getStrongTypeValue(numberVal, mssqlMeta.price);
     expect(typeof numberValResult).to.be.equal('number');
     expect(numberValResult * 1000).to.be.equal(789456);
 
-    const numberVal2 = "0";
+    const numberVal2 = '0';
     const numberValResult2 = handlerUtils.getStrongTypeValue(numberVal2, mssqlMeta.price);
     expect(typeof numberValResult2).to.be.equal('number');
     expect(numberValResult2 * 1000).to.be.equal(0);
 
-    const numberVal3 = "-234.00";
+    const numberVal3 = '-234.00';
     const numberValResult3 = handlerUtils.getStrongTypeValue(numberVal3, mssqlMeta.price);
     expect(typeof numberValResult3).to.be.equal('number');
     expect(numberValResult3).to.be.equal(-234);
 
     // Booleans
-    const booleanVal = "TRUE";
+    const booleanVal = 'TRUE';
     const booleanValResult = handlerUtils.getStrongTypeValue(booleanVal, mssqlMeta.active);
     expect(typeof booleanValResult).to.be.equal('boolean');
     expect(booleanValResult).to.be.equal(true);
 
-    const booleanVal2 = "false";
+    const booleanVal2 = 'false';
     const booleanValResult2 = handlerUtils.getStrongTypeValue(booleanVal2, mssqlMeta.active);
     expect(typeof booleanValResult2).to.be.equal('boolean');
     expect(booleanValResult2).to.be.equal(false);
@@ -216,22 +325,21 @@ expect(Object.keys(result.where.price)).to.be.empty;
     // Anything else!
     const unspecifiedVal = "It's coming in as a String!";
     const uuidMeta = {
-			type: DataTypes.UUID, // We don't do anything special with these!
-			allowNull: false,
-			comment: null,
-			field: '_id'
-		};
+      type: DataTypes.UUID, // We don't do anything special with these!
+      allowNull: false,
+      comment: null,
+      field: '_id'
+    };
     const uuidResult = handlerUtils.getStrongTypeValue(unspecifiedVal, uuidMeta);
     expect(typeof uuidResult).to.be.equal('string');
     expect(uuidResult).to.be.equal(unspecifiedVal); // Not changed in any way!
   });
 
-
   it('can convert numeric PK attributes to typed PK values', function() {
     const handlerUtils = new HandlerUtils();
 
     // Single column Integer Pk
-    const orderSkuIdVal = "132456";
+    const orderSkuIdVal = '132456';
     const orderSkuModel = {
       name: 'OrderSkuModel',
       primaryKeyAttributes: ['id'],
@@ -273,7 +381,7 @@ expect(Object.keys(result.where.price)).to.be.empty;
     const handlerUtils = new HandlerUtils();
 
     // Single column String Pk (VARCHAR)
-    const orderSkuIdVal = "cf942ab5-81fb-4f24-8701-3b70716988fc";
+    const orderSkuIdVal = 'cf942ab5-81fb-4f24-8701-3b70716988fc';
     const orderSkuModel = {
       name: 'OrderSkuModel',
       primaryKeyAttributes: ['id'],
@@ -287,8 +395,8 @@ expect(Object.keys(result.where.price)).to.be.empty;
         }
       }
     };
-    // getStrongPkValue will return an Object when unicode: false 
-    // to sidestep the default Sequelize behaviour of prefixing 
+    // getStrongPkValue will return an Object when unicode: false
+    // to sidestep the default Sequelize behaviour of prefixing
     // ALL String parameters with "N" on mssql dialect.
     const orderSkuIdResult = handlerUtils.getStrongPkValue(orderSkuIdVal, orderSkuModel);
     expect(`${orderSkuIdResult}`).to.be.equal(orderSkuIdVal);
@@ -299,7 +407,7 @@ expect(Object.keys(result.where.price)).to.be.empty;
     const handlerUtils = new HandlerUtils();
 
     // Single column String Pk
-    const orderSkuIdVal = "3e3a38d0-0ea2-480b-8af3-16db2a7e41a7";
+    const orderSkuIdVal = '3e3a38d0-0ea2-480b-8af3-16db2a7e41a7';
     const orderSkuModel = {
       name: 'OrderSkuModel',
       primaryKeyAttributes: ['id'],
@@ -314,7 +422,7 @@ expect(Object.keys(result.where.price)).to.be.empty;
       }
     };
     // getStrongPkValue will return a primitive String when unicode: true
-    // this satisfies the default Sequelize behaviour of prefixing 
+    // this satisfies the default Sequelize behaviour of prefixing
     // ALL String parameters with "N" on mssql dialect.
     const orderSkuIdResult = handlerUtils.getStrongPkValue(orderSkuIdVal, orderSkuModel);
     expect(orderSkuIdResult).to.be.equal(orderSkuIdVal);
@@ -328,8 +436,8 @@ expect(Object.keys(result.where.price)).to.be.empty;
     const orderModel = {
       name: 'Order',
       rawAttributes: mssqlMeta
-    }
- 
+    };
+
     // Equals (non-unicode)
     const queryObj = handlerUtils.getDataTypeClause(orderModel, 'createdBy', 'James');
     expect(queryObj.toString()).to.equal('James');
@@ -391,7 +499,7 @@ expect(Object.keys(result.where.price)).to.be.empty;
 
     // In-list operator
     const queryObjB = handlerUtils.getDataTypeClause(orderModel, 'updatedBy', '[James,Judy,Michael]');
-    expect(queryObjB[Op.in]).to.have.members(['James', 'Judy', 'Michael']);    
+    expect(queryObjB[Op.in]).to.have.members(['James', 'Judy', 'Michael']);
   });
 
   after(function(done) {
