@@ -1,6 +1,7 @@
 'use strict';
 const path = require('path');
 const _ = require('lodash');
+const retry = require('retry-as-promised');
 const Sequelize = require('sequelize');
 const SequelizeMeta = require('./lib/sequelize-meta');
 const SequelizeRoutes = require('./lib/sequelizeRoutes');
@@ -8,7 +9,12 @@ const debug = require('debug')('transom:sequelize');
 
 function TransomSequelize() {
   this.initialize = function(server, options) {
-    return new Promise(function(resolve, reject) {
+
+    let sequelize;
+    let database;
+    let retryOptions; 
+
+    return new Promise(resolve => {
       const sequelizeDefn = server.registry.get('transom-config.definition.sequelize', {});
       options = Object.assign({}, sequelizeDefn, options);
 
@@ -18,8 +24,22 @@ function TransomSequelize() {
         options.tables[t].code = (options.tables[t].code || t).toLowerCase();
       });
 
+      // Configure Promise retries on the initial database connection.
+      retryOptions = Object.assign({}, options.config.retryOptions, {
+        max: 10, // maximum amount of tries
+        timeout: 10000, // throw if no response or error within millisecond timeout
+        match: [ // Must match error signature (ala bluebird catch) to continue
+          Sequelize.ConnectionError
+        ],
+        backoffBase: 1000, // Initial backoff duration in ms.
+        backoffExponent: 1.05, // Exponent to increase backoff each try.
+        report: msg => { console.log(msg); }, // the function used for reporting; must have a (string, object) argument signature, where string is the message.
+        name:  'Transom.sequelize connection attempt'
+      });
+      delete options.config.retryOptions;
+
       // Sequelize wants them split out.
-      const database = options.config.database;
+      database = options.config.database;
       delete options.config.database;
 
       const username = options.config.username;
@@ -28,7 +48,7 @@ function TransomSequelize() {
       const password = options.config.password;
       delete options.config.password;
 
-      const sequelize = new Sequelize(database, username, password, options.config);
+      sequelize = new Sequelize(database, username, password, options.config);
 
       const regKey = options.sequelizeKey || 'sequelize';
       server.registry.set(regKey, sequelize);
@@ -44,26 +64,26 @@ function TransomSequelize() {
       } else if (options.config.dateStringify) {
         Sequelize.DATE.prototype._stringify = dateStringify;
       }
-
-      sequelize
-        .authenticate()
-        .then(() => {
+      resolve();
+    }).then(() => {
+      return retry(() => sequelize.authenticate(), retryOptions);
+    }).then(() => {
           console.log(`Connection to ${database} has been established.`);
 
-          const overwrite = options.overwrite === false ? false : true;
-          const metaPath = path.join(__dirname, '..', '..', '..', options.directory || 'sequelize-metadata');
+          return new Promise((resolve, reject) => {
+            const overwrite = options.overwrite === false ? false : true;
+            const metaPath = path.join(__dirname, '..', '..', '..', options.directory || 'sequelize-metadata');
 
-          const sequelizeMeta = new SequelizeMeta(sequelize, {
-            directory: metaPath,
-            overwrite,
-            additional: {
-              timestamps: false
-            },
-            tables: Object.keys(options.tables)
-          });
+            const sequelizeMeta = new SequelizeMeta(sequelize, {
+              directory: metaPath,
+              overwrite,
+              additional: {
+                timestamps: false
+              },
+              tables: Object.keys(options.tables)
+            });
 
           // Generates metadata for all the tables.
-          return new Promise((resolve, reject) => {
             sequelizeMeta.run(function(err) {
               if (err) {
                 return reject(err);
@@ -159,10 +179,8 @@ function TransomSequelize() {
         })
         .catch(err => {
           console.error('Unable to connect to the database:', err.message || err);
-          reject(err);
+          Promise.reject(err);
         });
-      resolve();
-    });
   };
 
   // this.preStart = function (server, options) {
