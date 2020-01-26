@@ -1,7 +1,5 @@
 'use strict';
 const path = require('path');
-const _ = require('lodash');
-const retry = require('retry-as-promised');
 const Sequelize = require('sequelize');
 const SequelizeMeta = require('./lib/sequelize-meta');
 const SequelizeRoutes = require('./lib/sequelizeRoutes');
@@ -66,7 +64,8 @@ function TransomSequelize() {
       }
       resolve();
     }).then(() => {
-      return retry(() => sequelize.authenticate(), retryOptions);
+      // return retry(() => sequelize.authenticate(), retryOptions);
+      return sequelize.authenticate({ retry: retryOptions });
     }).then(() => {
           console.log(`Connection to ${database} has been established.`);
 
