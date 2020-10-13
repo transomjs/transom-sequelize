@@ -10,4 +10,5 @@ docs
 *.tgz
 *~
 .vscode
+.env
 .travis.yml
