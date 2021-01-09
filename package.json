@@ -9,7 +9,8 @@
   "dependencies": {
     "@transomjs/transom-core": "^2.0.4",
     "async": "^3.2.0",
-    "sequelize": "^5.22.3"
+    "sequelize": "^5.22.3",
+    "tedious": "^9.2.3"
   },
   "description": "Add Sequelize support to Transom servers",
   "devDependencies": {
@@ -19,7 +20,7 @@
     "cross-env": "^7.0.2",
     "mocha": "^7.2.0",
     "mocha-lcov-reporter": "^1.3.0",
-    "np": "^5.2.1",
+    "np": "^7.2.0",
     "nyc": "^15.1.0",
     "sinon": "^8.1.1"
   },
@@ -34,7 +35,6 @@
   "license": "MIT",
   "main": "index.js",
   "name": "@transomjs/transom-sequelize",
-  "peerDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/transomjs/transom-sequelize.git"
