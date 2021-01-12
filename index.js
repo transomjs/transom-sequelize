@@ -113,8 +113,11 @@ function TransomSequelize() {
                   modelName: allTables[tbl].code, // These must be in LowerCase!
                   hooks: attributeHooks,
                   timestamps: false,
-                  freezeTableName: true
+                  freezeTableName: true,
+                  needsAcl: allTables[tbl].acl
                 };
+
+                //TODO: validate that acl columns actually exist in the meta when acl == true
 
                 // No duplicate model names in Sequelize!
                 if (sequelize.models[options.modelName]) {
