@@ -114,7 +114,8 @@ function TransomSequelize() {
                   hooks: attributeHooks,
                   timestamps: false,
                   freezeTableName: true,
-                  needsAcl: allTables[tbl].acl
+                  needsAcl: !!allTables[tbl].acl,
+                  acl: allTables[tbl].acl
                 };
 
                 //TODO: validate that acl columns actually exist in the meta when acl == true
