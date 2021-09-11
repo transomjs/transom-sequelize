@@ -118,7 +118,16 @@ function TransomSequelize() {
                   acl: allTables[tbl].acl
                 };
 
-                //TODO: validate that acl columns actually exist in the meta when acl == true
+                if (allTables[tbl].audit === false){
+                  options.timestamps= false;
+                } else {
+                  allTables[tbl].audit = allTables[tbl].audit || {};
+                  options.timestamps= true;
+                  options.createdAt = allTables[tbl].audit.createdAt || "createdDate";
+                  options.updatedAt = allTables[tbl].audit.updatedAt || "updatedDate";
+                  options.createdBy = allTables[tbl].audit.createdBy || "createdBy";
+                  options.updatedBy = allTables[tbl].audit.updatedBy || "updatedBy";
+                }
 
                 // No duplicate model names in Sequelize!
                 if (sequelize.models[options.modelName]) {
@@ -150,6 +159,20 @@ function TransomSequelize() {
                           return statics[staticKey];
                         };
                 }
+
+                //create a static function on the model that handles the user related audit fields
+                model['getUserAudit']= function(req, isInsert) {
+                  const ret = {};
+                  const opts = model.options;   
+                  if (opts.timestamps) {
+                    const user = req.locals.user || {};
+                    if (isInsert){
+                      ret[opts.createdBy] = user.email || "unknown";
+                    }
+                    ret[opts.updatedBy] = user.email || "unknown";
+                  }
+                  return ret;
+                }      
 
                 // Adding instance level methods.
                 // ********************************************************************
