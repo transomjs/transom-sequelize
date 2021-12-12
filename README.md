@@ -1,7 +1,8 @@
 # transom-sequelize
 A TransomJS module to generate Sequelize models from a SQL database and expose CRUD functions via REST API endpoints. The models are available through the TransomJS server registry for custom functions etc.
 
-#
+
+## Connecting to Mysql on localhost or without using SSL
 
 ```javascript
   definition: {
@@ -82,3 +83,72 @@ A TransomJS module to generate Sequelize models from a SQL database and expose C
     }
   }
 ```
+
+## Connecting to Mysql on DigitalOcean using SSL
+
+```javascript
+        sequelize: {
+            overwrite: process.env.NODE_ENV === 'development',
+            config: {
+                host: process.env.DB_HOST,
+                port: process.env.DB_PORT,
+                database: process.env.DB_NAME,
+                username: process.env.DB_USER,
+                password: process.env.DB_PASS,
+                dialect: process.env.DB_DIALECT,
+                dialectOptions: {
+                    ssl: {
+                        ca: dbCertificate,
+                        rejectUnauthorized: false,
+                    },
+                },
+                ssl: !!dbCertificate,
+                pool: {
+                    max: 4,
+                    idle: 30200,
+                },
+                // logging: console.log, // watch the SQL!
+                logging: false,
+            },
+            tables: {
+                app_log: {
+                    routes: false,
+                    audit: false,
+                },
+                message: {
+                    routes: false,
+                    audit: false,
+                },
+            },
+        },
+```
+
+## Connecting to Mysql on GCP using SSL
+
+Configure the MySQL database to *Allow only SSL connections*. This will provide the most secure option for hosting MySQL on GCP.
+
+```javascript
+        sequelize: {
+            overwrite: process.env.NODE_ENV === 'development',
+            config: {
+                database: process.env.DB_NAME,
+                username: process.env.DB_USER,
+                password: process.env.DB_PASS,
+                dialect: process.env.DB_DIALECT,
+                dialectOptions: {
+                    socketPath: `/cloudsql/${process.env.GCP_INSTANCE_CONNECTION_NAME}`,
+                },
+                pool: {
+                    max: 4,
+                    idle: 30200,
+                },
+                // logging: console.log, // watch the SQL!
+                logging: false,
+            },
+            ...section removed
+        },
+```
+
+
+
+
