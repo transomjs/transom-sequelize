@@ -1,13 +1,16 @@
 'use strict';
-const chai = require('chai');
-const expect = chai.expect;
 
 describe('index', function() {
-
-	beforeEach(function(done) {
-		done();
+	let chai;
+	let expect;
+  
+	before(function() {
+	  return import('chai').then(chaiLib => {
+		chai = chaiLib;
+		expect = chai.expect;
+	  });
 	});
-
+  
 	afterEach(function(done) {
         done();
     });

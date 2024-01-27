@@ -1,13 +1,17 @@
 'use strict';
-const chai = require('chai');
-const expect = chai.expect;
 const { DataTypes, Op } = require('sequelize');
 const HandlerUtils = require('../lib/handlerUtils');
 const mssqlMeta = require('./mssqlMeta');
 
 describe('handlerUtils', function() {
-  before(function(done) {
-    done();
+  let chai;
+  let expect;
+
+  before(function() {
+    return import('chai').then(chaiLib => {
+      chai = chaiLib;
+      expect = chai.expect;
+    });
   });
 
   // afterEach(function(done) {
