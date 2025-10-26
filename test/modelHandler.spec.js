@@ -1,7 +1,7 @@
 'use strict';
 const sinon = require('sinon');
 const ModelHandler = require('../lib/modelHandler');
-const restifyErrors = require('restify-errors');
+const createError = require('http-errors');
 
 describe('modelHandler', function() {
   let chai;
@@ -145,7 +145,7 @@ describe('modelHandler', function() {
       };
 
       const next = sandbox.spy(function(err) {
-        expect(err).to.be.instanceOf(restifyErrors.BadRequestError);
+        expect(err.status).to.equal(400);
         expect(res.json.called).to.be.false;
         done();
       });
@@ -232,8 +232,8 @@ describe('modelHandler', function() {
       };
 
       const next = sandbox.spy(function(err) {
-        // NotFoundError has a statusCode, so it passes through without being wrapped
-        expect(err).to.be.instanceOf(restifyErrors.NotFoundError);
+        // NotFoundError has a status property, so it passes through without being wrapped
+        expect(err.status).to.equal(404);
         done();
       });
 

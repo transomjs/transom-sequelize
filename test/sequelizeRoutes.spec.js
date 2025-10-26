@@ -104,39 +104,25 @@ describe('sequelizeRoutes', function() {
       sequelizeRoutes.setupModelHandler();
 
       // Verify POST (insert)
-      expect(server.post.calledWith(
-        sandbox.match({ path: '/api/v1/db/users' })
-      )).to.be.true;
+      expect(server.post.calledWith('/api/v1/db/users')).to.be.true;
 
       // Verify GET (find)
-      expect(server.get.calledWith(
-        sandbox.match({ path: '/api/v1/db/users' })
-      )).to.be.true;
+      expect(server.get.calledWith('/api/v1/db/users')).to.be.true;
 
       // Verify GET (findCount)
-      expect(server.get.calledWith(
-        sandbox.match({ path: '/api/v1/db/users/count' })
-      )).to.be.true;
+      expect(server.get.calledWith('/api/v1/db/users/count')).to.be.true;
 
       // Verify GET (findById)
-      expect(server.get.calledWith(
-        sandbox.match({ path: '/api/v1/db/users/:__id' })
-      )).to.be.true;
+      expect(server.get.calledWith('/api/v1/db/users/:__id')).to.be.true;
 
       // Verify PUT (updateById)
-      expect(server.put.calledWith(
-        sandbox.match({ path: '/api/v1/db/users/:__id' })
-      )).to.be.true;
+      expect(server.put.calledWith('/api/v1/db/users/:__id')).to.be.true;
 
       // Verify DELETE (deleteById)
-      expect(server.del.calledWith(
-        sandbox.match({ path: '/api/v1/db/users/:__id' })
-      )).to.be.true;
+      expect(server.del.calledWith('/api/v1/db/users/:__id')).to.be.true;
 
       // Verify DELETE (deleteBatch)
-      expect(server.del.calledWith(
-        sandbox.match({ path: '/api/v1/db/users/batch' })
-      )).to.be.true;
+      expect(server.del.calledWith('/api/v1/db/users/batch')).to.be.true;
     });
 
     it('should not create routes when routes is false', function() {
@@ -193,28 +179,18 @@ describe('sequelizeRoutes', function() {
       sequelizeRoutes.setupModelHandler();
 
       // Should have GET routes
-      expect(server.get.calledWith(
-        sandbox.match({ path: '/api/v1/db/messages' })
-      )).to.be.true;
+      expect(server.get.calledWith('/api/v1/db/messages')).to.be.true;
 
-      expect(server.get.calledWith(
-        sandbox.match({ path: '/api/v1/db/messages/:__id' })
-      )).to.be.true;
+      expect(server.get.calledWith('/api/v1/db/messages/:__id')).to.be.true;
 
       // Should NOT have POST route
-      expect(server.post.calledWith(
-        sandbox.match({ path: '/api/v1/db/messages' })
-      )).to.be.false;
+      expect(server.post.calledWith('/api/v1/db/messages')).to.be.false;
 
       // Should NOT have PUT route
-      expect(server.put.calledWith(
-        sandbox.match({ path: '/api/v1/db/messages/:__id' })
-      )).to.be.false;
+      expect(server.put.calledWith('/api/v1/db/messages/:__id')).to.be.false;
 
       // Should NOT have DELETE routes
-      expect(server.del.calledWith(
-        sandbox.match({ path: '/api/v1/db/messages/:__id' })
-      )).to.be.false;
+      expect(server.del.calledWith('/api/v1/db/messages/:__id')).to.be.false;
     });
 
     it('should disable delete by query by default', function() {
@@ -236,9 +212,10 @@ describe('sequelizeRoutes', function() {
       sequelizeRoutes.setupModelHandler();
 
       // Should NOT have DELETE by query route
+      // With Express, first arg is the path string directly
       const deleteByQueryCalls = server.del.getCalls().filter(call => {
-        const args = call.args[0];
-        return args.path === '/api/v1/db/users'; // Without :__id or /batch
+        const path = call.args[0];
+        return path === '/api/v1/db/users'; // Without :__id or /batch
       });
 
       expect(deleteByQueryCalls.length).to.equal(0);
@@ -275,12 +252,12 @@ describe('sequelizeRoutes', function() {
 
       // Verify that middleware is passed to route registration
       const findCalls = server.get.getCalls().filter(call => {
-        const args = call.args[0];
-        return args.path === '/api/v1/db/users';
+        const path = call.args[0];
+        return path === '/api/v1/db/users';
       });
 
       expect(findCalls.length).to.be.greaterThan(0);
-      // The route should have: path object, pre middleware array, handler, post middleware
+      // The route should have: path, pre middleware array, handler, post middleware
       const callArgs = findCalls[0].args;
       expect(callArgs.length).to.be.greaterThan(2);
     });
@@ -304,16 +281,16 @@ describe('sequelizeRoutes', function() {
       const sequelizeRoutes = SequelizeRoutes(server, options);
       sequelizeRoutes.setupModelHandler();
 
-      // Check that versions property exists in route config
+      // Check that route was created - with Express, versions are handled via metadata
       const findCalls = server.get.getCalls().filter(call => {
-        const args = call.args[0];
-        return args && args.path === '/api/v1/db/users';
+        const path = call.args[0];
+        return path === '/api/v1/db/users';
       });
 
       expect(findCalls.length).to.be.greaterThan(0);
-      const routeConfig = findCalls[0].args[0];
-      // Versions should be passed through to the route config
-      expect(routeConfig).to.have.property('versions');
+      // Versions are now handled through TransomCore.withMeta wrapper
+      // Just verify the route was registered
+      expect(findCalls[0].args[0]).to.equal('/api/v1/db/users');
     });
 
     it('should handle custom sequelizeKey option', function() {

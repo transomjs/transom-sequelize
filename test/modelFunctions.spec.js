@@ -1,7 +1,7 @@
 'use strict';
 const sinon = require('sinon');
 const ModelFunctions = require('../lib/modelFunctions');
-const restifyErrors = require('restify-errors');
+const createError = require('http-errors');
 
 describe('modelFunctions', function() {
   let chai;
@@ -146,7 +146,7 @@ describe('modelFunctions', function() {
         await modelFunctions.modelFindById(server, entity, req);
         expect.fail('Should have thrown NotFoundError');
       } catch (err) {
-        expect(err).to.be.instanceOf(restifyErrors.NotFoundError);
+        expect(err.status).to.equal(404);
         expect(err.message).to.equal('Not Found');
       }
     });
@@ -557,7 +557,7 @@ describe('modelFunctions', function() {
         await modelFunctions.modelUpdateById(server, entity, req);
         expect.fail('Should have thrown NotFoundError');
       } catch (err) {
-        expect(err).to.be.instanceOf(restifyErrors.NotFoundError);
+        expect(err.status).to.equal(404);
       }
     });
 

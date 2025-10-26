@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **transom-sequelize** is a TransomJS module that generates Sequelize models from SQL databases and automatically exposes CRUD operations via REST API endpoints. It introspects database schemas, generates metadata files, and creates REST routes with support for ACL (Access Control Lists), audit trails, and custom model methods/hooks.
 
+**Important:** This module now works with transom-core 5.x which uses Express instead of Restify. Error handling uses `http-errors` (not `restify-errors`), and route registration uses Express's middleware pattern with `TransomCore.withMeta()` for metadata attachment.
+
 ## Development Commands
 
 ### Testing
