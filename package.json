@@ -7,7 +7,7 @@
     "url": "https://github.com/transomjs/transom-sequelize/issues"
   },
   "dependencies": {
-    "@transomjs/transom-core": "^3.0.0",
+    "@transomjs/transom-core": "5.0.1-0",
     "async": "^3.2.5",
     "sequelize": "^6.35.2"
   },
