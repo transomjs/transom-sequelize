@@ -1,6 +1,11 @@
 # @transomjs/transom-sequelize change log
 
 ## 6.0.0
+- **Depends on transom-core 7** (was 5), which ships its own type definitions; the
+  package's temporary stand-in declaration for transom-core is removed. This also replaces
+  pocket-registry 1.x (and its lodash) with pocket-registry 3 in the install.
+- Dev tools: mocha 12, chai 6, c8 12, sinon 22, cross-env 10, sqlite3 6 and `@types/node` 22
+  (it was 18, below the Node 22 minimum). The unused chai-datetime is removed.
 - **Requires Node.js 22 or newer** (`engines.node` is `>=22`). The compiled code targets ES2023,
   and CI runs on Node 22 and 24.
 - Ported to TypeScript. The package now ships type definitions: the plugin, the API

@@ -1,4 +1,5 @@
 import createDebug from "debug";
+import type { RequestHandler } from "express";
 import TransomCore from "@transomjs/transom-core";
 import ModelHandler from "./modelHandler";
 import OpenApiMeta from "./openApiMeta";
@@ -6,6 +7,18 @@ import { sequelizeDefinition, sequelizeInstance, uriPrefix as readUriPrefix } fr
 import type { RouteArg, RouteEntity, TransomHandler, TransomRequest, TransomSequelizeOptions, TransomServerLike } from "../types";
 
 const debug = createDebug("transom:sequelize:routes");
+
+/**
+ * transom-core's withMeta() for this package's handlers. They take a TransomRequest;
+ * withMeta() takes a plain Express handler.
+ */
+function withMeta(metadata: Record<string, unknown>, handler: TransomHandler): RequestHandler {
+  return TransomCore.withMeta(metadata, (req, res, next) => {
+    // Boundary: transom-core creates req.locals before any plugin's routes run, so
+    // every request reaching these routes is a TransomRequest.
+    handler(req as TransomRequest, res, next);
+  });
+}
 
 declare namespace SequelizeRoutes {
   interface Functions {
@@ -94,7 +107,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           entity: routeEntity,
           versions: route.versions,
         };
-        server.post(path, pre, TransomCore.withMeta(metadata, modelHandler.handleInsert), postMiddleware);
+        server.post(path, pre, withMeta(metadata, modelHandler.handleInsert), postMiddleware);
       }
 
       // *** READ ***********************************************
@@ -110,7 +123,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
         };
         debug(`Adding find route ${path}`);
 
-        server.get(path, pre, TransomCore.withMeta(metadata, modelHandler.handleFind), postMiddleware);
+        server.get(path, pre, withMeta(metadata, modelHandler.handleFind), postMiddleware);
       }
 
       if (route.routes.findCount !== false) {
@@ -124,7 +137,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding findCount route ${path}`);
-        server.get(path, pre, TransomCore.withMeta(metadata, modelHandler.handleCount), postMiddleware);
+        server.get(path, pre, withMeta(metadata, modelHandler.handleCount), postMiddleware);
       }
 
       if (route.routes.findById !== false) {
@@ -138,7 +151,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding findById route ${path}`);
-        server.get(path, pre, TransomCore.withMeta(metadata, modelHandler.handleFindById), postMiddleware);
+        server.get(path, pre, withMeta(metadata, modelHandler.handleFindById), postMiddleware);
       }
 
       // *** UPDATE  ********************************************
@@ -153,7 +166,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding updateById route ${path}`);
-        server.put(path, pre, TransomCore.withMeta(metadata, modelHandler.handleUpdateById), postMiddleware);
+        server.put(path, pre, withMeta(metadata, modelHandler.handleUpdateById), postMiddleware);
       }
 
       // *** DELETE  ********************************************
@@ -169,7 +182,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding delete route ${path}`);
-        server.del(path, pre, TransomCore.withMeta(metadata, modelHandler.handleDelete), postMiddleware);
+        server.del(path, pre, withMeta(metadata, modelHandler.handleDelete), postMiddleware);
       }
 
       if (route.routes.deleteBatch !== false) {
@@ -183,7 +196,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding deleteBatch route ${path}`);
-        server.del(path, pre, TransomCore.withMeta(metadata, modelHandler.handleDeleteBatch), postMiddleware);
+        server.del(path, pre, withMeta(metadata, modelHandler.handleDeleteBatch), postMiddleware);
       }
 
       if (route.routes.deleteById !== false) {
@@ -197,7 +210,7 @@ function SequelizeRoutes(server: TransomServerLike, options: TransomSequelizeOpt
           versions: route.versions,
         };
         debug(`Adding deleteById route ${path}`);
-        server.del(path, pre, TransomCore.withMeta(metadata, modelHandler.handleDeleteById), postMiddleware);
+        server.del(path, pre, withMeta(metadata, modelHandler.handleDeleteById), postMiddleware);
       }
     });
   }
