@@ -1,6 +1,6 @@
 # @transomjs/transom-sequelize change log
 
-## 6.0.0
+## 7.0.0
 - **Depends on transom-core 7** (was 5), which ships its own type definitions; the
   package's temporary stand-in declaration for transom-core is removed. This also replaces
   pocket-registry 1.x (and its lodash) with pocket-registry 3 in the install.
