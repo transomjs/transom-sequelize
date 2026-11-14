@@ -79,11 +79,9 @@ describe('openApiMeta', function () {
       meta = OpenApiMeta({}, { ignore: ['secret_value', 'person.hidden_value'], security });
     });
 
-    // BUG: attributes are read from Sequelize's fieldAttributeMap, which only lists columns
-    // whose name differs from the attribute name. Columns like `id` (or any single-word
-    // column) never appear in the OpenAPI parameters or schema. The entries that do appear
-    // are named by column (full_name), not by the attribute the API uses (fullName).
-    it('find lists the renamed columns as query parameters, minus ignored ones', function () {
+    // Every attribute is listed, named as the API uses it (fullName, not full_name). The
+    // ignore list matches either name: 'secret_value' and 'person.hidden_value' are columns.
+    it('find lists every attribute as a query parameter, minus ignored ones', function () {
       const result = meta.findMeta(routeFor({ meta: { summary: 'People', description: 'All the people' } }), 'person').call({ method: 'get' });
       expect(result.summary).to.equal('People');
       expect(result.description).to.equal('All the people');
@@ -92,14 +90,15 @@ describe('openApiMeta', function () {
       expect(result.security).to.deep.equal(security);
       expect(result.requestBody).to.equal(undefined);
       const names = result.parameters.map((p) => `${p.in}:${p.name}`);
-      expect(names).to.deep.equal(['query:_select', 'query:_skip', 'query:_limit', 'query:_sort', 'query:full_name', 'query:is_active']);
-      const name = result.parameters.find((p) => p.name === 'full_name');
-      expect(name).to.deep.equal({ name: 'full_name', in: 'query', description: 'Full name', required: false, schema: { type: 'string' } });
-      expect(result.parameters.find((p) => p.name === 'is_active').description).to.equal('is_active comment not provided');
+      expect(names).to.deep.equal(['query:_select', 'query:_skip', 'query:_limit', 'query:_sort', 'query:id', 'query:fullName', 'query:isActive']);
+      const name = result.parameters.find((p) => p.name === 'fullName');
+      expect(name).to.deep.equal({ name: 'fullName', in: 'query', description: 'Full name', required: false, schema: { type: 'string' } });
+      expect(result.parameters.find((p) => p.name === 'isActive').description).to.equal('isActive comment not provided');
+      expect(result.parameters.find((p) => p.name === 'id').schema).to.deep.equal({ type: 'integer', format: 'int32' });
       // A column without an explicit allowNull counts as required (generated metadata
       // always sets allowNull, so this only affects hand-written attributes).
-      expect(result.schemas['person-single'].required).to.deep.equal(['full_name', 'is_active']);
-      expect(result.schemas['person-single'].properties.is_active).to.deep.equal({ type: 'boolean' });
+      expect(result.schemas['person-single'].required).to.deep.equal(['id', 'fullName', 'isActive']);
+      expect(result.schemas['person-single'].properties.isActive).to.deep.equal({ type: 'boolean' });
       expect(result.schemas.error.required).to.deep.equal(['code', 'message']);
       expect(result.schemas.delete.required).to.deep.equal(['deleted']);
       expect(result.responses['200'].content['application/json'].schema.$ref).to.equal('#/components/schemas/person-list');
@@ -148,7 +147,7 @@ describe('openApiMeta', function () {
     it('describes the delete routes', function () {
       const del = meta.deleteMeta(routeFor(), 'person').call({ method: 'delete' });
       expect(del.operationId).to.equal('delete-person');
-      expect(del.parameters.map((p) => p.name)).to.include('full_name');
+      expect(del.parameters.map((p) => p.name)).to.include('fullName');
 
       const batch = meta.deleteBatchMeta(routeFor(), 'person').call({ method: 'delete' });
       expect(batch.responses['200'].description).to.equal('An Array of person Ids');
@@ -168,30 +167,25 @@ describe('openApiMeta', function () {
     it('endpointMeta accepts a single ignored attribute and empty parameter lists', function () {
       const fn = meta.endpointMeta(routeFor(), 'find', null, undefined, 'full_name', { description: 'ok' });
       const result = fn.call({ method: 'get' });
-      expect(result.parameters.map((p) => p.name)).to.deep.equal(['is_active']);
+      expect(result.parameters.map((p) => p.name)).to.deep.equal(['id', 'isActive']);
       expect(result.responses['200']).to.deep.equal({ description: 'ok' });
 
       const noIgnore = meta.endpointMeta(routeFor(), 'find', {}, {}, null, { description: 'ok' }).call({ method: 'get' });
-      expect(noIgnore.parameters.map((p) => p.name)).to.deep.equal(['full_name', 'is_active']);
+      expect(noIgnore.parameters.map((p) => p.name)).to.deep.equal(['id', 'fullName', 'isActive']);
     });
 
     it('works with no options', function () {
       const plain = OpenApiMeta({}, {});
       const result = plain.findCountMeta(routeFor(), 'person').call({ method: 'get' });
       expect(result.security).to.deep.equal({});
-      expect(result.parameters.map((p) => p.name)).to.deep.equal(['full_name', 'is_active', 'secret_value', 'hidden_value']);
+      expect(result.parameters.map((p) => p.name)).to.deep.equal(['id', 'fullName', 'isActive', 'secretValue', 'hiddenValue']);
       expect(plain.getSelectParameter('person').description).to.match(/comma delimited list of person attributes/);
     });
 
-    it('throws if a mapped attribute has no raw definition, as before', function () {
-      const model = sequelize.models.person;
-      const saved = model.fieldRawAttributesMap;
-      model.fieldRawAttributesMap = {};
-      try {
-        expect(() => meta.findMeta(routeFor(), 'person').call({ method: 'get' })).to.throw(TypeError, /allowNull/);
-      } finally {
-        model.fieldRawAttributesMap = saved;
-      }
+    it('matches ignore entries by attribute name too', function () {
+      const byAttribute = OpenApiMeta({}, { ignore: ['secretValue', 'person.hiddenValue', 'other.fullName'] });
+      const result = byAttribute.findMeta(routeFor(), 'person').call({ method: 'get' });
+      expect(result.parameters.filter((p) => p.in === 'query' && !p.name.startsWith('_')).map((p) => p.name)).to.deep.equal(['id', 'fullName', 'isActive']);
     });
   });
 });

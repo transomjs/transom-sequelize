@@ -77,24 +77,6 @@ declare namespace OpenApiMeta {
   }
 }
 
-/** A column's settings, as Sequelize keeps them in the (untyped) fieldRawAttributesMap. */
-interface FieldAttribute {
-  allowNull?: boolean;
-  comment?: string;
-  type?: unknown;
-}
-
-/** Sequelize's field-name maps. They're internal and missing from its type definitions. */
-function fieldMaps(model: object): {
-  fieldAttributeMap: Record<string, unknown>;
-  fieldRawAttributesMap: Record<string, FieldAttribute>;
-} {
-  // Present on every initialized Sequelize 6 model; read without types.
-  return {
-    fieldAttributeMap: Reflect.get(model, "fieldAttributeMap") as Record<string, unknown>,
-    fieldRawAttributesMap: Reflect.get(model, "fieldRawAttributesMap") as Record<string, FieldAttribute>,
-  };
-}
 
 /** OpenAPI metadata builders for the generated routes. The server argument is unused. */
 function OpenApiMeta(_server: TransomServerLike, options: OpenApiMeta.Options): OpenApiMeta.Functions {
@@ -424,23 +406,22 @@ function OpenApiMeta(_server: TransomServerLike, options: OpenApiMeta.Options): 
         if (ignoreParams.includes("*")) {
           debug(`OpenApi skipping all attributes from ${entity}`);
         } else {
-          const { fieldAttributeMap, fieldRawAttributesMap } = fieldMaps(model);
-          const required: string[] = []; // array of mandatory field names
+          const required: string[] = []; // array of mandatory attribute names
           const properties: Record<string, OpenApiMeta.Schema> = {}; // attributes w/ openapi datatype schemas
           const schema: OpenApiMeta.Schema = { required, properties };
 
-          Object.keys(fieldAttributeMap).map((attribute) => {
+          // Every attribute, named as the API uses it (e.g. fullName). An ignore entry may
+          // use the attribute or the column name (full_name), with or without the entity.
+          for (const [attribute, fieldAttr] of Object.entries(model.rawAttributes)) {
+            const names = [attribute, fieldAttr.field ?? attribute];
             if (
-              ignoreParams.includes(attribute) ||
-              openapiIgnore.includes(attribute) ||
-              openapiIgnore.includes(`${entity}.${attribute}`)
+              names.some(
+                (name) =>
+                  ignoreParams.includes(name) || openapiIgnore.includes(name) || openapiIgnore.includes(`${entity}.${name}`),
+              )
             ) {
               debug(`OpenApi skipping attribute ${entity}.${attribute}`);
             } else {
-              const fieldAttr = fieldRawAttributesMap[attribute];
-              if (fieldAttr === undefined) {
-                throw new TypeError(`Cannot read properties of undefined (reading 'allowNull')`);
-              }
               if (!fieldAttr.allowNull) {
                 required.push(attribute);
               }
@@ -455,7 +436,7 @@ function OpenApiMeta(_server: TransomServerLike, options: OpenApiMeta.Options): 
               };
               meta.parameters.push(parameter);
             }
-          });
+          }
           meta.schemas[`${entity}-single`] = schema;
         }
         // These schemas should always get included.

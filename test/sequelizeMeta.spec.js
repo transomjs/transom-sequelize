@@ -121,19 +121,18 @@ describe('SequelizeMeta', function () {
       expect(person).to.match(/^\/\/ \*+\n\/\/ \*\* This is a generated file/);
       expect(person).to.include('\t\tid: {\n\t\t\ttype: DataTypes.INTEGER(11).UNSIGNED.ZEROFILL,');
       expect(person).to.match(/id: \{[^}]*primaryKey: true,\n\t\t\tautoIncrement: true,/);
-      // BUG: a null comment is written as the string "null".
-      expect(person).to.match(/id: \{[^}]*comment: "null",/);
-      expect(person).to.match(/tenantId: \{[\s\S]*?comment: "The tenant",[\s\S]*?references: \{\n\t\t\t\tmodel: 'tenant',\n\t\t\t\tkey: 'id'\n\t\t\t\}[\s\S]*?field: 'tenant_id'/);
-      expect(person).to.match(/email: \{[^}]*type: DataTypes\.STRING\(100\),[^}]*defaultValue: 'nobody@example\.test',[^}]*unicode: false,\n\t\t\tunique: true,\n\t\t\tfield: 'email'/);
-      // BUG: the "mySql Bit fix" turns b'1'/b'0' into 1/0, but the string handling after it
-      // quotes the result again, so BIT defaults come out as the strings '1' and '0'.
-      expect(person).to.match(/active: \{[^}]*type: DataTypes\.BOOLEAN,[^}]*defaultValue: '1'/);
-      expect(person).to.match(/deleted: \{[^}]*defaultValue: '0'/);
+      // A null comment is left out.
+      expect(person).to.not.match(/id: \{[^}]*comment:/);
+      expect(person).to.match(/tenantId: \{[\s\S]*?comment: "The tenant",[\s\S]*?references: \{\n\t\t\t\tmodel: "tenant",\n\t\t\t\tkey: "id"\n\t\t\t\}[\s\S]*?field: "tenant_id"/);
+      expect(person).to.match(/email: \{[^}]*type: DataTypes\.STRING\(100\),[^}]*defaultValue: "nobody@example\.test",[^}]*unicode: false,\n\t\t\tunique: true,\n\t\t\tfield: "email"/);
+      // BIT(1) is written as BOOLEAN, so b'1'/b'0' defaults become true/false.
+      expect(person).to.match(/active: \{[^}]*type: DataTypes\.BOOLEAN,[^}]*defaultValue: true/);
+      expect(person).to.match(/deleted: \{[^}]*defaultValue: false/);
       expect(person).to.match(/createdDate: \{[^}]*type: DataTypes\.DATE,[^}]*defaultValue: Sequelize\.literal\('CURRENT_TIMESTAMP'\)/);
-      expect(person).to.match(/startDate: \{[^}]*defaultValue: '2020-01-01 00:00:00'/);
+      expect(person).to.match(/startDate: \{[^}]*defaultValue: "2020-01-01 00:00:00"/);
       expect(person).to.match(/birthDate: \{[^}]*DataTypes\.DATEONLY[\s\S]*?get: function\(name\)/);
       expect(person).to.match(/uid: \{[^}]*type: DataTypes\.CHAR\(36\),[^}]*defaultValue: Sequelize\.fn\('uuid'\)/);
-      expect(person).to.match(/price: \{[^}]*type: DataTypes\.DECIMAL,[^}]*defaultValue: '0\.00'/);
+      expect(person).to.match(/price: \{[^}]*type: DataTypes\.DECIMAL,[^}]*defaultValue: "0\.00"/);
       expect(person).to.match(/quantity: \{[^}]*type: DataTypes\.INTEGER\(6\),[^}]*defaultValue: 0/);
       expect(person).to.match(/big: \{\n\t\t\ttype: DataTypes\.BIGINT/);
       expect(person).to.match(/ratio: \{\n\t\t\ttype: DataTypes\.FLOAT/);
@@ -149,6 +148,10 @@ describe('SequelizeMeta', function () {
       expect(loaded.tenantId.field).to.equal('tenant_id');
       expect(loaded.tenantId.references).to.deep.equal({ model: 'tenant', key: 'id' });
       expect(loaded.email.unique).to.equal(true);
+      expect(loaded.email.defaultValue).to.equal('nobody@example.test');
+      expect(loaded.active.defaultValue).to.equal(true);
+      expect(loaded.deleted.defaultValue).to.equal(false);
+      expect(loaded.id.comment).to.equal(undefined);
     });
 
     it('leaves out timestamp columns named in `additional`', async function () {
@@ -214,18 +217,54 @@ describe('SequelizeMeta', function () {
       expect(text).to.deep.equal({});
     });
 
-    // BUG: values are written inside double quotes without escaping, so a column comment
-    // containing a double quote produces a metadata file that isn't valid JavaScript.
-    it('writes a double quote in a comment unescaped', async function () {
+    it('escapes quotes and backslashes in comments, defaults, enum values and names', async function () {
       const db = fakeDatabase(sandbox, 'mysql', {
         tables: ['tenant'],
-        columns: { tenant: { name: { type: 'VARCHAR(10)', comment: 'Say "hi"' } } },
+        columns: {
+          tenant: {
+            name: { type: 'VARCHAR(10)', comment: 'Say "hi" \\ it\'s fine', defaultValue: 'O\'Brien "the" \\ one' },
+            'odd col': { type: 'VARCHAR(10)', allowNull: true },
+          },
+        },
         keys: {},
       });
       const text = await generate(db.sequelize, {});
-      expect(text.tenant).to.include('comment: "Say "hi""');
-      // (The SyntaxError comes from the vm context, so match its name, not its class.)
-      expect(() => evaluate(text.tenant)).to.throw().with.property('name', 'SyntaxError');
+      expect(text.tenant).to.include('comment: "Say \\"hi\\" \\\\ it\'s fine"');
+      const loaded = evaluate(text.tenant);
+      expect(loaded.name.comment).to.equal('Say "hi" \\ it\'s fine');
+      expect(loaded.name.defaultValue).to.equal('O\'Brien "the" \\ one');
+      // camelCase turns "odd col" into oddCol; the field keeps the real name.
+      expect(loaded.oddCol.field).to.equal('odd col');
+    });
+
+    it('keeps an empty comment and writes a foreign key once when both sources report it', async function () {
+      const db = fakeDatabase(sandbox, 'mysql', {
+        tables: ['person'],
+        columns: {
+          person: {
+            tenant_id: { type: 'INT(11)', comment: '', references: { model: 'tenant', key: 'id' } },
+          },
+        },
+        keys: {
+          person: [{ constraint_name: 'fk', source_column: 'tenant_id', target_table: 'tenant', target_column: 'id', extra: '', column_key: 'MUL' }],
+        },
+      });
+      const text = await generate(db.sequelize, {});
+      expect(text.person.match(/references: \{/g)).to.have.length(1);
+      const loaded = evaluate(text.person);
+      expect(loaded.tenantId.comment).to.equal('');
+      expect(loaded.tenantId.references).to.deep.equal({ model: 'tenant', key: 'id' });
+    });
+
+    it('quotes a column name that is not an identifier when camelCase is off', async function () {
+      const db = fakeDatabase(sandbox, 'mysql', {
+        tables: ['tenant'],
+        columns: { tenant: { 'odd col': { type: 'VARCHAR(10)' }, 'x"y': { type: 'INT' } } },
+        keys: {},
+      });
+      const text = await generate(db.sequelize, { camelCase: false });
+      const loaded = evaluate(text.tenant);
+      expect(Object.keys(loaded)).to.deep.equal(['odd col', 'x"y']);
     });
   });
 
@@ -312,10 +351,10 @@ describe('SequelizeMeta', function () {
       const text = await generate(db.sequelize, {});
       const person = text.person;
       expect(person).to.match(/id: \{\n\t\t\ttype: DataTypes\.INTEGER,\n\t\t\tallowNull: false,\n\t\t\tprimaryKey: true,\n\t\t\tautoIncrement: true,\n\t\t\tautoIncrement: true,/);
-      expect(person).to.match(/guid: \{\n\t\t\ttype: DataTypes\.UUIDV4,\n\t\t\tallowNull: false,\n\t\t\tfield: 'guid'/);
-      // BUG: as for MySQL, the bit fix's 1/0 is quoted again, giving '1'/'0'.
-      expect(person).to.match(/active: \{\n\t\t\ttype: DataTypes\.BOOLEAN,\n\t\t\tdefaultValue: '1'/);
-      expect(person).to.match(/archived: \{\n\t\t\ttype: DataTypes\.BOOLEAN,\n\t\t\tdefaultValue: '0'/);
+      expect(person).to.match(/guid: \{\n\t\t\ttype: DataTypes\.UUIDV4,\n\t\t\tallowNull: false,\n\t\t\tfield: "guid"/);
+      // As for MySQL, BIT defaults ((1))/((0)) become true/false.
+      expect(person).to.match(/active: \{\n\t\t\ttype: DataTypes\.BOOLEAN,\n\t\t\tdefaultValue: true/);
+      expect(person).to.match(/archived: \{\n\t\t\ttype: DataTypes\.BOOLEAN,\n\t\t\tdefaultValue: false/);
       expect(person).to.match(/created: \{\n\t\t\ttype: DataTypes\.DATE,\n\t\t\tdefaultValue: Sequelize\.fn\('getdate'\)/);
       expect(person).to.match(/name: \{\n\t\t\ttype: DataTypes\.STRING,\n\t\t\tunicode: true,/);
       expect(person).to.match(/body: \{\n\t\t\ttype: DataTypes\.TEXT/);

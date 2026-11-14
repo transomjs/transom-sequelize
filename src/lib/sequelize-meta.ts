@@ -64,6 +64,16 @@ function runtimeOptions(sequelize: Sequelize): Record<string, unknown> {
   return typeof options === "object" && options !== null ? { ...options } : {};
 }
 
+/** A JavaScript string literal for `value`, safe to write into a generated module. */
+function jsString(value: string): string {
+  return JSON.stringify(value);
+}
+
+/** An object key: bare when it's a plain identifier, otherwise quoted. */
+function jsKey(name: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(name) ? name : jsString(name);
+}
+
 /** The string, lower-cased; "" for a falsy value. Other values have no toLowerCase, as before. */
 function lowerOf(value: unknown): string {
   if (!value) {
@@ -321,10 +331,23 @@ class SequelizeMeta {
               out += ",\n";
             }
 
+            // sqlite: a table's only INTEGER PRIMARY KEY is the rowid, assigned automatically,
+            // but describeTable() doesn't say so. Without autoIncrement, Sequelize doesn't
+            // read the new id back after an insert.
+            if (
+              runtimeOptions(self.sequelize).dialect === "sqlite" &&
+              column.primaryKey === true &&
+              column.autoIncrement === undefined &&
+              String(column.type).toUpperCase() === "INTEGER" &&
+              _.filter(columns, (c) => c.primaryKey === true).length === 1
+            ) {
+              column.autoIncrement = true;
+            }
+
             // column's attributes
             const fieldAttr = _.keys(column);
             const fieldName = self.options.camelCase ? _.camelCase(field) : field;
-            out += spaces + spaces + fieldName + ": {\n";
+            out += spaces + spaces + jsKey(fieldName) + ": {\n";
 
             // Serial key for postgres...
             let defaultVal = column.defaultValue;
@@ -338,7 +361,7 @@ class SequelizeMeta {
                 "ENUM(" +
                 special
                   .map(function (f) {
-                    return `"${String(f)}"`;
+                    return jsString(String(f));
                   })
                   .join(",") +
                 ")";
@@ -365,8 +388,8 @@ class SequelizeMeta {
                 } else if (foreignKey?.isForeignKey) {
                   const sources = column.foreignKey?.foreignSources ?? {};
                   out += spaces + spaces + spaces + "references: {\n";
-                  out += spaces + spaces + spaces + spaces + `model: '${String(sources.target_table)}',\n`;
-                  out += spaces + spaces + spaces + spaces + `key: '${String(sources.target_column)}'\n`;
+                  out += spaces + spaces + spaces + spaces + `model: ${jsString(String(sources.target_table))},\n`;
+                  out += spaces + spaces + spaces + spaces + `key: ${jsString(String(sources.target_column))}\n`;
                   out += spaces + spaces + spaces + "}";
                 } else {
                   return true;
@@ -407,15 +430,19 @@ class SequelizeMeta {
                   return true;
                 }
 
+                // BIT columns are written as DataTypes.BOOLEAN, so their default is a boolean.
+                let isBitDefault = false;
                 if (column.type.toLowerCase() === "bit(1)") {
                   //mySql Bit fix
-                  defaultValueText = defaultVal === "b'1'" ? 1 : 0;
+                  defaultValueText = defaultVal === "b'1'";
+                  isBitDefault = true;
                 } else if (runtimeOptions(self.sequelize).dialect === "mssql" && column.type.toLowerCase() === "bit") {
                   // mssql bit fix
-                  defaultValueText = defaultVal === "((1))" ? 1 : 0;
+                  defaultValueText = defaultVal === "((1))";
+                  isBitDefault = true;
                 }
 
-                if (_.isString(defaultVal)) {
+                if (_.isString(defaultVal) && !isBitDefault) {
                   const fieldType = column.type.toLowerCase();
                   if (_.endsWith(defaultVal, "()")) {
                     defaultValueText = "Sequelize.fn('" + defaultVal.replace(/\(\)$/, "") + "')";
@@ -442,16 +469,14 @@ class SequelizeMeta {
                   // No default!
                   return true;
                 } else {
-                  // A string that matches "Sequelize.literal('bar')" should be escaped.
-                  const requiresEscape =
-                    _.isString(defaultValueText) && !defaultValueText.match(/^Sequelize\.[^(]+\(.*\)$/);
-                  defaultValueText =
-                    requiresEscape && _.isString(defaultValueText)
-                      ? self.sequelize.escape(_.trim(defaultValueText, '"'))
-                      : defaultValueText;
-
-                  // don't prepend N for MSSQL when building models...
-                  defaultValueText = _.trimStart(_.toString(defaultValueText), "N");
+                  // A plain string default is written as a JavaScript string literal (the
+                  // value between the quotes added above). Sequelize.fn()/literal() calls are
+                  // code and stay as they are. SQL escaping isn't used: its '' for a quote
+                  // isn't valid JavaScript.
+                  const isCode = _.isString(defaultValueText) && /^Sequelize\.[^(]+\(.*\)$/.test(defaultValueText);
+                  if (_.isString(defaultValueText) && !isCode) {
+                    defaultValueText = jsString(_.trim(defaultValueText, '"'));
+                  }
                   out += spaces + spaces + spaces + attr + ": " + String(defaultValueText);
                 }
               } else if (attr === "unique") {
@@ -470,17 +495,20 @@ class SequelizeMeta {
                 const key: unknown = _.isObject(references) ? Reflect.get(references, "key") : undefined;
                 if (!foreignKey?.isForeignKey && typeof model === "string" && typeof key === "string") {
                   out += spaces + spaces + spaces + "references: {\n";
-                  out += spaces + spaces + spaces + spaces + `model: '${model}',\n`;
-                  out += spaces + spaces + spaces + spaces + `key: '${key}'\n`;
+                  out += spaces + spaces + spaces + spaces + `model: ${jsString(model)},\n`;
+                  out += spaces + spaces + spaces + spaces + `key: ${jsString(key)}\n`;
                   out += spaces + spaces + spaces + "}";
                 } else {
                   return true;
                 }
               } else if (attr === "type" && column.type.indexOf("ENUM") === 0) {
                 out += spaces + spaces + spaces + attr + ": DataTypes." + column.type;
+              } else if (attrValue === null || attrValue === undefined) {
+                // Nothing to write (e.g. a column without a comment).
+                return true;
               } else {
                 const attrLower = lowerOf(attrValue);
-                let val = `"${String(attrValue)}"`;
+                let val = jsString(String(attrValue));
 
                 if (attrLower === "boolean" || attrLower === "bit(1)" || attrLower === "bit") {
                   val = "DataTypes.BOOLEAN";
@@ -569,7 +597,7 @@ ${spaces + spaces + spaces}},\n`;
             }
 
             if (self.options.camelCase) {
-              out += spaces + spaces + spaces + "field: '" + field + "',\n";
+              out += spaces + spaces + spaces + "field: " + jsString(field) + ",\n";
             }
 
             // Remove the last `,` within the attribute options

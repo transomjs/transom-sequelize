@@ -29,6 +29,22 @@
   finished) and wrote the second as the string `"false"`. It now writes `references: {model,
   key}` and `unique: true` where they apply. Any column the generator can't handle now fails
   startup with an error instead of hanging.
+- **Fixed: sqlite inserts respond with the new id.** sqlite doesn't report that a table's only
+  `INTEGER PRIMARY KEY` is assigned automatically, so the metadata now marks it
+  `autoIncrement`, and Sequelize reads the id back.
+- **Fixed: BIT defaults.** `BIT(1)` (MySQL) and `BIT` (MSSQL) columns are `DataTypes.BOOLEAN`,
+  and their defaults are now `true`/`false` instead of the strings `'1'`/`'0'`.
+- **Fixed: null column attributes are left out** instead of being written as the string
+  `"null"` (e.g. `comment: "null"` on every column without a comment).
+- **Fixed: generated metadata is always valid JavaScript.** Comments, string defaults, enum
+  values, foreign-key names and `field` names are written as escaped JavaScript strings, and
+  a column name that isn't a plain identifier is quoted as a key. Before, a `"` in a comment
+  broke the file, and SQL-style escaping of defaults (`''`) wasn't valid JavaScript for every
+  dialect. Regenerated files use double quotes throughout, so they'll differ from older ones.
+- **Fixed: OpenAPI lists every column.** It read Sequelize's `fieldAttributeMap`, which only
+  holds columns whose name differs from the attribute, so `id` and other single-word columns
+  were missing. It now lists every attribute, named as the API uses it (`fullName`, not
+  `full_name`). `ignore` entries match either name.
 
 ## 1.0.16
 - Adding tests for handlerUtils

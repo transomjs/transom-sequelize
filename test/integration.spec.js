@@ -191,7 +191,9 @@ describe('integration: initialize() with transom-core and sqlite', function () {
     expect(files).to.deep.equal(['person.js', 'secret.js', 'tenant.js']);
     const person = fs.readFileSync(path.join(tmpDir, 'meta', 'person.js'), 'utf8');
     expect(person).to.match(/This is a generated file/);
-    expect(person).to.match(/firstName: \{[\s\S]*?type: DataTypes\.STRING\(50\)[\s\S]*?field: 'first_name'/);
+    expect(person).to.match(/firstName: \{[\s\S]*?type: DataTypes\.STRING\(50\)[\s\S]*?field: "first_name"/);
+    // sqlite's single INTEGER PRIMARY KEY is assigned automatically.
+    expect(person).to.match(/id: \{[^}]*autoIncrement: true/);
     expect(person).to.match(/birthDate: \{[\s\S]*?DataTypes\.DATEONLY[\s\S]*?get: function\(name\)/);
   });
 
@@ -220,16 +222,13 @@ describe('integration: initialize() with transom-core and sqlite', function () {
     expect(models.tenant.getUserAudit(req, true)).to.deep.equal({});
   });
 
-  // BUG (sqlite only): sqlite's describeTable() doesn't report autoIncrement, so the
-  // generated metadata has no autoIncrement and inserts respond with id: null (the row
-  // does get an id). MySQL reports it, so this doesn't affect MySQL users.
-  it('responds to inserts on sqlite without the new id', async function () {
+  it('responds to inserts on sqlite with the new id', async function () {
     const tenant = await call('POST', '/tenant', { name: 'Acme' });
     expect(tenant.status).to.equal(200);
-    expect(tenant.body.id).to.equal(null);
+    expect(tenant.body.id).to.be.a('number');
     const found = await call('GET', '/tenant');
     expect(found.body.data.map((t) => t.name)).to.deep.equal(['Acme']);
-    expect(found.body.data[0].id).to.be.a('number');
+    expect(found.body.data[0].id).to.equal(tenant.body.id);
   });
 
   it('serves insert, find, count, findById, update and delete over HTTP', async function () {
