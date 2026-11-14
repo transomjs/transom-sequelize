@@ -1,4 +1,6 @@
 # transom-sequelize
+
+[![CI](https://github.com/transomjs/transom-sequelize/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/transomjs/transom-sequelize/actions/workflows/ci.yml)
 A TransomJS module to generate Sequelize models from a SQL database and expose CRUD functions via REST API endpoints. The models are available through the TransomJS server registry for custom functions etc.
 
 

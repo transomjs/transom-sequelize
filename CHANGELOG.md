@@ -1,6 +1,8 @@
 # @transomjs/transom-sequelize change log
 
 ## Unreleased
+- **Requires Node.js 22 or newer** (`engines.node` is `>=22`). The compiled code targets ES2023,
+  and CI runs on Node 22 and 24.
 - Ported to TypeScript. The package now ships type definitions: the plugin, the API
   definition shapes (`SequelizeDefinition`, `TableDefinition`, `TableRouteFx`, `Responder`,
   `TableAcl`...), `TransomModel`/`TransomEntity`, and every `lib/*` module.
