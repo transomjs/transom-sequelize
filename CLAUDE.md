@@ -10,9 +10,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
+### TypeScript
+The source is TypeScript in `src/`, compiled to `dist/` (CommonJS, with .d.ts). Public types
+live in `src/types.ts` and are re-exported from the plugin's namespace in `src/index.ts`.
+The committed `lib/*.js` and `lib/*.d.ts` files are shims that keep the old deep imports
+(e.g. `@transomjs/transom-sequelize/lib/modelFunctions`) working; don't put code in them.
+
+```bash
+npm run build      # tsc -p tsconfig.build.json -> dist/
+npm run typecheck  # build, then type-check src/ and test/types/ (consumer usage)
+```
+
+Policy: no `any`, no `@ts-*` comments, no non-null `!`; `as` casts only at real boundaries
+(registry values, generated metadata, untyped Sequelize internals), each with a comment.
+`src/transom-core.d.ts` declares the one transom-core function used; delete it once
+transom-core publishes its own types.
+
 ### Testing
 ```bash
-npm test                    # Run all tests with coverage via nyc/mocha
+npm test                    # Build, then run all tests with coverage via nyc/mocha
 cross-env NODE_ENV=test nyc mocha  # Explicit test command
 ```
 
@@ -28,7 +44,7 @@ npm run deploy             # Release using np (interactive release tool)
 
 ## Architecture Overview
 
-### Initialization Flow (index.js)
+### Initialization Flow (src/index.ts)
 
 1. **Configuration Loading**: Reads `sequelize` definition from transom-config registry
 2. **Database Connection**: Creates Sequelize instance with retry logic (up to 10 attempts)
@@ -38,14 +54,14 @@ npm run deploy             # Release using np (interactive release tool)
 
 ### Key Components
 
-#### lib/sequelize-meta.js
+#### src/lib/sequelize-meta.ts
 - Introspects database tables and generates metadata files
 - Handles foreign keys, primary keys, and data type mapping
 - Outputs metadata to `sequelize-metadata/` (or custom directory)
 - Converts database types to Sequelize DataTypes
 - Special handling for MSSQL DATE fields and Unicode strings
 
-#### lib/sequelizeRoutes.js
+#### src/lib/sequelizeRoutes.ts
 - Creates standard REST routes for each table:
   - `POST /db/:entity` - Insert
   - `GET /db/:entity` - Find (with query parameters)
@@ -58,26 +74,26 @@ npm run deploy             # Release using np (interactive release tool)
 - Routes can be selectively enabled/disabled per table
 - Supports API versioning via Accept-Version header
 
-#### lib/modelHandler.js
+#### src/lib/modelHandler.ts
 - Request handlers that delegate to modelFunctions
 - Handles response formatting and error handling
 - Supports custom responder functions per route
 - Scrubs ACL values from responses
 
-#### lib/modelFunctions.js
+#### src/lib/modelFunctions.ts
 - Core CRUD operations implementation
 - Integrates with HandlerUtils for query building
 - Integrates with HandlerAcl for access control
 - Supports custom `nextVal()` static method for non-autoincrement PKs
 - Adds audit fields (createdBy/updatedBy) from req.locals.user
 
-#### lib/handlerUtils.js
+#### src/lib/handlerUtils.ts
 - Query building from REST parameters
 - Type coercion for primary keys
 - Select field processing
 - API operation separation (filters vs operations)
 
-#### lib/handlerAcl.js
+#### src/lib/handlerAcl.ts
 - ACL enforcement for find/insert/update/delete operations
 - Applies ACL defaults on insert
 - Filters queries based on user permissions
@@ -104,7 +120,7 @@ Models are defined in the transom-config `sequelize.tables` object with:
 
 ### Dialect Support
 
-Supported databases (lib/dialects/):
+Supported databases (src/lib/dialects/):
 - MySQL/MariaDB
 - PostgreSQL
 - MSSQL (with special handling for BIT types and DATE formatting)

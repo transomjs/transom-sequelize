@@ -2,6 +2,26 @@
 A TransomJS module to generate Sequelize models from a SQL database and expose CRUD functions via REST API endpoints. The models are available through the TransomJS server registry for custom functions etc.
 
 
+## TypeScript
+
+Type definitions ship with the package. The plugin is exported with `export =`, so its
+types are reached through the import:
+
+```ts
+import transomSequelize = require("@transomjs/transom-sequelize");
+import ModelFunctions = require("@transomjs/transom-sequelize/lib/modelFunctions");
+
+const deal: transomSequelize.TableDefinition = {
+  routes: { updateById: { fx: myUpdateFx }, delete: false },
+};
+const myUpdateFx: transomSequelize.TableRouteFx = async (server, entity, req) => {
+  /* ... */
+};
+```
+
+Route handlers receive `TransomRequest` (an Express `Request` with the `locals` fields this
+package reads). The package doesn't augment Express's global `Request` type.
+
 ## Connecting to Mysql on localhost or without using SSL
 
 ```javascript

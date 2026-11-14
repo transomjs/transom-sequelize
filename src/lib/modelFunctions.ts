@@ -1,32 +1,70 @@
-'use strict';
-const debug = require('debug')('transom:sequelize:functions');
-const HandlerUtils = require('./handlerUtils');
-const HandlerAcl = require('./handlerAcl');
-const createError = require('http-errors');
+import createDebug from "debug";
+import createError from "http-errors";
+import type { FindOptions, Model, Sequelize, WhereOptions } from "sequelize";
+import HandlerUtils from "./handlerUtils";
+import HandlerAcl from "./handlerAcl";
+import type { TransomEntity, TransomRequest, TransomServerLike } from "../types";
 
-module.exports = function ModelFunctions(options) {
+const debug = createDebug("transom:sequelize:functions");
+
+declare namespace ModelFunctions {
+  /** A model function. Also the shape of a route's `fx` override. */
+  type Fx<T> = (server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) => Promise<T>;
+
+  /** The result of the delete functions: the number of rows deleted. */
+  interface DeleteResult {
+    data: { deleted: number };
+  }
+
+  interface Functions {
+    /** findAll() with the request's filters, paging, _sort, _select and ACL applied. */
+    modelFind: Fx<{ items: Model[] }>;
+    /** Looks up req.params.__id (with _select and ACL). Rejects with 404 when not found. */
+    modelFindById: Fx<Model>;
+    modelCount: Fx<{ count: number }>;
+    /**
+     * Creates a row from req.body (plus nextVal(), ACL defaults and audit fields).
+     * Body fields that aren't columns are dropped and returned as skippedFields.
+     */
+    modelInsert: Fx<{ item: Model; skippedFields: string[] }>;
+    /** Deletes the rows matching the request's filters. */
+    modelDelete: Fx<DeleteResult>;
+    modelDeleteById: Fx<DeleteResult>;
+    /** Deletes the ids listed in req.body[<primary key>] (an array or one string). */
+    modelDeleteBatch: Fx<DeleteResult>;
+    /** Updates req.params.__id with req.body (plus audit fields). Rejects with 404 when not found. */
+    modelUpdateById: Fx<Model>;
+  }
+
+  interface Options {
+    sequelize: Sequelize;
+  }
+}
+
+/** The model functions behind the generated routes. */
+function ModelFunctions(options: ModelFunctions.Options): ModelFunctions.Functions {
   const sequelize = options.sequelize;
-  const handlerUtils = new HandlerUtils({
+  const handlerUtils = HandlerUtils({
     sequelize,
   });
 
-  const handlerAcl = new HandlerAcl({
+  const handlerAcl = HandlerAcl({
     sequelize,
   });
 
-  function modelFind(server, entity, req, skipAcl) {
+  function modelFind(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    let query;
+    let query: FindOptions;
     try {
       query = handlerUtils.buildQuery({}, req, entity);
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclFind(model, query, req, entity);
+        query = handlerAcl.addAclFind(model, query, req);
       }
 
       // Used for Select.
       const separated = handlerUtils.separateApiOperations(req.query, model);
       const operations = separated.operands || {};
-      const selectOpts = handlerUtils.processSelectOperator(model, operations['_select']);
+      const selectOpts = handlerUtils.processSelectOperator(model, operations["_select"]);
 
       // Apply the select list.
       if (selectOpts.attributes && selectOpts.attributes.length > 0) {
@@ -40,21 +78,21 @@ module.exports = function ModelFunctions(options) {
     return model
       .findAll(query)
       .then((items) => {
-        debug('Fetching findAll() completed.');
+        debug("Fetching findAll() completed.");
         return {
           items,
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing ${entity.modelName} model findAll()`, err);
         throw err;
       });
   }
 
-  function modelFindById(server, entity, req, skipAcl) {
+  function modelFindById(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    const queryOptions = {};
-    let id;
+    let queryOptions: FindOptions & { where?: WhereOptions } = {};
+    let id: unknown;
 
     try {
       id = handlerUtils.getStrongPkValue(req.params.__id, model);
@@ -62,7 +100,7 @@ module.exports = function ModelFunctions(options) {
       // Used for Select.
       const separated = handlerUtils.separateApiOperations(req.query, model);
       const operations = separated.operands || {};
-      const selectOpts = handlerUtils.processSelectOperator(model, operations['_select']);
+      const selectOpts = handlerUtils.processSelectOperator(model, operations["_select"]);
 
       // Apply the select list.
       if (selectOpts.attributes && selectOpts.attributes.length > 0) {
@@ -75,34 +113,35 @@ module.exports = function ModelFunctions(options) {
 
     return Promise.resolve(model.primaryKeyAttribute)
       .then((pkCol) => {
-        queryOptions.where = queryOptions.where || {};
-        queryOptions.where[pkCol] = id;
+        queryOptions.where = { ...queryOptions.where, [pkCol]: id };
 
         if (entity.model.options.needsAcl && !skipAcl) {
-          qry = handlerAcl.addAclFind(model, qry, req, entity);
+          // This assigned an undeclared variable (`qry`) before, so every ACL findById
+          // failed with a ReferenceError (sent as 400). It now applies the ACL as intended.
+          queryOptions = handlerAcl.addAclFind(model, queryOptions, req);
         }
 
         return model.findOne(queryOptions);
       })
       .then((item) => {
         if (!item) {
-          throw createError(404, 'Not Found');
+          throw createError(404, "Not Found");
         }
         return item;
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing model ${entity.modelName} findById()`, err);
         throw err;
       });
   }
 
-  function modelCount(server, entity, req, skipAcl) {
+  function modelCount(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    let query;
+    let query: FindOptions;
     try {
       query = handlerUtils.buildQuery({}, req, entity);
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclFind(model, query, req, entity);
+        query = handlerAcl.addAclFind(model, query, req);
       }
     } catch (err) {
       debug(`Failed to build query for ${entity.modelName} count.`, err);
@@ -117,13 +156,13 @@ module.exports = function ModelFunctions(options) {
           count,
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing model ${entity.modelName} count()`, err);
         throw err;
       });
   }
 
-  function modelInsert(server, entity, req, skipAcl) {
+  function modelInsert(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
 
     /***************************************************
@@ -142,28 +181,29 @@ module.exports = function ModelFunctions(options) {
      *   }
      * },
      */
-    let nextValResult;
+    let nextValResult: Promise<Record<string, unknown> | undefined>;
     try {
-      if (typeof model.nextVal === 'function') {
+      if (typeof model.nextVal === "function") {
         debug(`Using ${entity.modelName} nextVal during Insert.`);
         nextValResult = model.nextVal();
       } else {
-        nextValResult = Promise.resolve();
+        nextValResult = Promise.resolve(undefined);
       }
     } catch (err) {
       debug(`Failed duing ${entity.modelName} nextVal().`, err);
       return Promise.reject(err);
     }
 
-    const skippedFields = [];
+    const skippedFields: string[] = [];
+    const body: unknown = req.body;
     return nextValResult
       .then((nextVal) => {
         debug(`Applying  ${entity.modelName} nextVal result to posted values.`);
-        const values = Object.assign({}, req.body, nextVal);
+        const values: Record<string, unknown> = Object.assign({}, body, nextVal);
 
         // Check that provided values map to the Entity.
         Object.keys(values || {}).map((path) => {
-          if (!model.rawAttributes.hasOwnProperty(path)) {
+          if (!Object.prototype.hasOwnProperty.call(model.rawAttributes, path)) {
             delete values[path];
             skippedFields.push(path);
           }
@@ -191,19 +231,19 @@ module.exports = function ModelFunctions(options) {
           skippedFields,
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing ${entity.modelName} modelInsert`, err);
         throw err;
       });
   }
 
-  function modelDelete(server, entity, req, skipAcl) {
+  function modelDelete(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    let query;
+    let query: FindOptions & { where: WhereOptions };
     try {
       query = handlerUtils.buildQuery({}, req, entity);
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclDelete(model, query, req, entity);
+        query = handlerAcl.addAclDelete(model, query, req);
       }
     } catch (err) {
       debug(`Error building query for ${entity.modelName} delete()`, err);
@@ -220,15 +260,15 @@ module.exports = function ModelFunctions(options) {
           },
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing ${entity.modelName} delete`, err);
         throw err;
       });
   }
 
-  function modelDeleteById(server, entity, req, skipAcl) {
+  function modelDeleteById(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    let query;
+    let query: { where: WhereOptions };
     try {
       const id = handlerUtils.getStrongPkValue(req.params.__id, model);
       query = {
@@ -237,7 +277,7 @@ module.exports = function ModelFunctions(options) {
         },
       };
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclDelete(model, query, req, entity);
+        query = handlerAcl.addAclDelete(model, query, req);
       }
     } catch (err) {
       debug(`Error building query for ${entity.modelName} deleteById()`, err);
@@ -254,40 +294,49 @@ module.exports = function ModelFunctions(options) {
           },
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing model ${entity.modelName} deleteById()`, err);
         throw err;
       });
   }
 
-  function modelDeleteBatch(server, entity, req, skipAcl) {
+  function modelDeleteBatch(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    let query;
+    let query: { where: WhereOptions };
     try {
-      const Op = sequelize.Sequelize.Op;
+      // Op as the Sequelize instance exposes it (untyped there; tests inject their own).
+      const opIn: unknown = Reflect.get(Object(Reflect.get(sequelize.Sequelize, "Op")), "in");
+      if (typeof opIn !== "symbol") {
+        throw new TypeError("Cannot read Sequelize.Op.in");
+      }
 
-      let deleteIdList = (req.body || {})[model.primaryKeyAttribute];
+      const body: unknown = req.body;
+      let deleteIdList: unknown = Reflect.get(Object(body || {}), model.primaryKeyAttribute);
       if (!deleteIdList) {
         throw new Error(
-          `Request body must contain a "${model.primaryKeyAttribute}" field containing the array of PK values to delete.`
+          `Request body must contain a "${model.primaryKeyAttribute}" field containing the array of PK values to delete.`,
         );
       }
       // If user provided a single string value.
-      if (typeof deleteIdList === 'string') {
+      if (typeof deleteIdList === "string") {
         deleteIdList = [deleteIdList];
       }
+      if (!Array.isArray(deleteIdList)) {
+        // e.g. a number or an object. Not mappable, so this failed before too.
+        throw new TypeError(`"${model.primaryKeyAttribute}" must be an array of PK values or a single string`);
+      }
       // Convert Id values to the appropriate type for this PK.
-      const inList = [];
-      deleteIdList.map((id) => {
+      const inList: unknown[] = [];
+      deleteIdList.map((id: unknown) => {
         inList.push(handlerUtils.getStrongPkValue(id, model));
       });
       query = {
         where: {
-          [model.primaryKeyAttribute]: { [Op.in]: inList },
+          [model.primaryKeyAttribute]: { [opIn]: inList },
         },
       };
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclDelete(model, query, req, entity);
+        query = handlerAcl.addAclDelete(model, query, req);
       }
     } catch (err) {
       debug(`Failed to create an in-list for ${entity.modelName} batch delete.`, err);
@@ -304,16 +353,16 @@ module.exports = function ModelFunctions(options) {
           },
         };
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing model ${entity.modelName} deleteBatch()`, err);
         throw err;
       });
   }
 
-  function modelUpdateById(server, entity, req, skipAcl) {
+  function modelUpdateById(_server: TransomServerLike, entity: TransomEntity, req: TransomRequest, skipAcl?: boolean) {
     const model = entity.model;
-    const newValues = req.body;
-    let query;
+    const newValues: unknown = req.body;
+    let query: FindOptions & { where: WhereOptions; returning?: boolean };
     try {
       const id = handlerUtils.getStrongPkValue(req.params.__id, model);
       query = {
@@ -323,25 +372,30 @@ module.exports = function ModelFunctions(options) {
         returning: true,
       };
       if (entity.model.options.needsAcl && !skipAcl) {
-        query = handlerAcl.addAclUpdate(model, query, req, entity);
+        query = handlerAcl.addAclUpdate(model, query, req);
       }
     } catch (err) {
       debug(`Failed to build query for ${entity.modelName} updateById.`, err);
       return Promise.reject(err);
     }
 
+    // The audit fields are added to req.body itself (as before). Without a body this
+    // throws synchronously, as Object.assign(undefined) did.
     const userAudit = model.getUserAudit(req, false);
+    if (newValues === null || newValues === undefined) {
+      throw new TypeError("Cannot convert undefined or null to object");
+    }
     Object.assign(newValues, userAudit);
 
     return model
       .findOne(query)
       .then((record) => {
         if (!record) {
-          throw createError(404, 'Not Found');
+          throw createError(404, "Not Found");
         }
         return record.update(newValues);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         debug(`Error executing model ${entity.modelName} updateById()`, err);
         throw err;
       });
@@ -357,4 +411,6 @@ module.exports = function ModelFunctions(options) {
     modelDeleteBatch,
     modelUpdateById,
   };
-};
+}
+
+export = ModelFunctions;
