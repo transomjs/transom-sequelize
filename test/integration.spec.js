@@ -293,8 +293,8 @@ describe('integration: initialize() startup failures', function () {
   });
 
   beforeEach(function () {
-    // initialize() swallows startup errors and leaves an unhandled rejection behind.
-    // Capture it here instead of letting mocha report it.
+    // Startup failures reject initialize(); record any unhandled rejection so the
+    // tests can check there isn't one.
     unhandled = [];
     savedListeners = process.listeners('unhandledRejection');
     process.removeAllListeners('unhandledRejection');
@@ -314,10 +314,7 @@ describe('integration: initialize() startup failures', function () {
     }
   });
 
-  // BUG: when startup fails, initialize() logs the error and still resolves; the failure
-  // only surfaces as an unhandled rejection. Callers (e.g. a startup retry loop) can't
-  // tell that startup failed.
-  it('resolves even when startup fails', async function () {
+  it('rejects when startup fails, without leaving an unhandled rejection', async function () {
     const registry = new (require('pocket-registry'))();
     registry.set('transom-config', {
       definition: {
@@ -327,17 +324,17 @@ describe('integration: initialize() startup failures', function () {
       },
     });
     const server = { registry, get() {}, post() {}, put() {}, del() {} };
-    const result = await transomSequelize.initialize(server);
-    expect(result).to.equal(undefined);
+    let failure;
+    await transomSequelize.initialize(server).catch((err) => {
+      failure = err;
+    });
+    expect(String(failure)).to.match(/no-such-dialect/);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(unhandled).to.have.length(1);
-    expect(String(unhandled[0])).to.match(/no-such-dialect/);
+    expect(unhandled).to.have.length(0);
     expect(registry.has('sequelize')).to.equal(false);
   });
 
-  // BUG: retryOptions from the definition are overwritten by the plugin's defaults
-  // (Object.assign(user, defaults)), so e.g. retryOptions.max has no effect.
-  it('ignores the configured retryOptions in favour of its defaults', async function () {
+  it('uses the configured retryOptions over its defaults', async function () {
     const { Sequelize } = require('sequelize');
     const authenticate = Sequelize.prototype.authenticate;
     let seen;
@@ -345,23 +342,64 @@ describe('integration: initialize() startup failures', function () {
       seen = options.retry;
       return Promise.reject(new Error('stop here'));
     };
+    const registry = new (require('pocket-registry'))();
     try {
-      const registry = new (require('pocket-registry'))();
       registry.set('transom-config', {
         definition: {
           uri: { prefix: '/api/v1' },
-          sequelize: { config: { dialect: 'sqlite', storage: ':memory:', logging: false, retryOptions: { max: 1 } }, tables: {} },
+          sequelize: { config: { dialect: 'sqlite', storage: ':memory:', logging: false, retryOptions: { max: 1, name: 'mine' } }, tables: {} },
         },
       });
-      await transomSequelize.initialize({ registry, get() {}, post() {}, put() {}, del() {} });
-      expect(seen.max).to.equal(10);
+      let failure;
+      await transomSequelize.initialize({ registry, get() {}, post() {}, put() {}, del() {} }).catch((err) => {
+        failure = err;
+      });
+      expect(String(failure)).to.match(/stop here/);
+      expect(seen.max).to.equal(1);
+      expect(seen.name).to.equal('mine');
+      // Defaults fill in what isn't configured.
+      expect(seen.timeout).to.equal(10000);
+      expect(seen.backoffBase).to.equal(1000);
+      expect(seen.match).to.have.length(1);
       seen.report('reported');
-      await registry.get('sequelize').close();
     } finally {
       Sequelize.prototype.authenticate = authenticate;
+      await registry.get('sequelize').close();
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(unhandled).to.have.length(1);
+    expect(unhandled).to.have.length(0);
+  });
+
+  it('rejects when a table definition fails, e.g. a static that already exists', async function () {
+    const registry = new (require('pocket-registry'))();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'transom-sequelize-'));
+    const storage = path.join(tmpDir, 'db.sqlite');
+    const setup = new Sequelize({ dialect: 'sqlite', storage, logging: false });
+    await setup.query('CREATE TABLE thing (id INTEGER PRIMARY KEY)');
+    await setup.close();
+    registry.set('transom-config', {
+      definition: {
+        uri: { prefix: '/api/v1' },
+        sequelize: {
+          directory: path.relative(APP_ROOT, path.join(tmpDir, 'meta')),
+          config: { dialect: 'sqlite', storage, logging: false },
+          // findAll is already a Sequelize model method.
+          tables: { thing: { audit: false, statics: { findAll() {} } } },
+        },
+      },
+    });
+    useOwnNodeModules();
+    let failure;
+    try {
+      await transomSequelize.initialize({ registry, get() {}, post() {}, put() {}, del() {} }).catch((err) => {
+        failure = err;
+      });
+    } finally {
+      restoreNodePath();
+      await registry.get('sequelize').close();
+      removeTempDir(tmpDir);
+    }
+    expect(String(failure)).to.match(/'findAll' already exists on the thing Model/);
+    expect(unhandled).to.have.length(0);
   });
 
   it('applies a custom dateStringify to DATE values', async function () {

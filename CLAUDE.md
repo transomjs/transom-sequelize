@@ -47,7 +47,7 @@ npm run deploy             # Release using np (interactive release tool)
 ### Initialization Flow (src/index.ts)
 
 1. **Configuration Loading**: Reads `sequelize` definition from transom-config registry
-2. **Database Connection**: Creates Sequelize instance with retry logic (up to 10 attempts)
+2. **Database Connection**: Creates Sequelize instance with retry logic (up to 10 attempts by default; `config.retryOptions` overrides)
 3. **Metadata Generation**: Uses `SequelizeMeta` to introspect database and generate model metadata files
 4. **Model Creation**: Creates Sequelize models with combined metadata (generated + user-defined)
 5. **Route Setup**: Uses `SequelizeRoutes` to create REST endpoints for each table

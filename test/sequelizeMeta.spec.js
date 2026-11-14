@@ -367,38 +367,64 @@ describe('SequelizeMeta', function () {
       }
     });
 
-    // BUG: sqlite's describeTable() reports `unique: false` and, for a foreign-key column,
-    // `references: {model, key}`. The generator writes the boolean as the string "false",
-    // and calls toLowerCase() on the references object, which throws inside a promise
-    // callback: run() never calls back, and initialize() never resolves.
-    it('writes unique: "false" as a string, and fails on sqlite foreign keys', async function () {
+    it("writes sqlite's unique and foreign-key details", async function () {
       const sequelize = sqliteSequelize();
-      await sequelize.query('CREATE TABLE tenant (id INTEGER PRIMARY KEY)');
-      await sequelize.query('CREATE TABLE person (id INTEGER PRIMARY KEY, tenant_id INTEGER REFERENCES tenant(id))');
-
-      const tenant = await generate(sequelize, { tables: ['tenant'] });
-      expect(tenant.tenant).to.include('unique: "false"');
-
-      const saved = process.listeners('unhandledRejection');
-      process.removeAllListeners('unhandledRejection');
-      const unhandled = [];
-      process.on('unhandledRejection', (reason) => unhandled.push(reason));
-      let calledBack = false;
       try {
-        new SequelizeMeta(sequelize, { overwrite: false, tables: ['person'] }).run(() => {
-          calledBack = true;
-        });
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await sequelize.query('CREATE TABLE tenant (id INTEGER PRIMARY KEY, code VARCHAR(10) UNIQUE)');
+        await sequelize.query('CREATE TABLE person (id INTEGER PRIMARY KEY, tenant_id INTEGER REFERENCES tenant(id))');
+
+        const text = await generate(sequelize, { tables: ['tenant', 'person'] });
+        expect(text.tenant).to.not.include('unique: "false"');
+        const tenant = evaluate(text.tenant);
+        expect(tenant.id.unique).to.equal(undefined);
+        expect(tenant.code.unique).to.equal(true);
+
+        // camelCase is on by default, so tenant_id becomes tenantId.
+        const person = evaluate(text.person);
+        expect(person.tenantId.references).to.deep.equal({ model: 'tenant', key: 'id' });
+        expect(person.id.references).to.equal(undefined);
       } finally {
-        process.removeAllListeners('unhandledRejection');
-        for (const listener of saved) {
-          process.on('unhandledRejection', listener);
-        }
         await sequelize.close();
       }
-      expect(calledBack).to.equal(false);
-      expect(unhandled).to.have.length(1);
-      expect(String(unhandled[0])).to.match(/Expected a string column attribute, got object/);
+    });
+
+    it('skips a references value without a model and key', async function () {
+      const sequelize = sqliteSequelize();
+      try {
+        await sequelize.query('CREATE TABLE odd (id INTEGER PRIMARY KEY)');
+        const describeTable = sequelize.getQueryInterface().describeTable.bind(sequelize.getQueryInterface());
+        sinon.stub(sequelize.getQueryInterface(), 'describeTable').callsFake(async (table) => {
+          const fields = await describeTable(table);
+          fields.id.references = { model: 1 };
+          return fields;
+        });
+        const text = await generate(sequelize, { tables: ['odd'] });
+        expect(evaluate(text.odd).id.references).to.equal(undefined);
+      } finally {
+        sinon.restore();
+        await sequelize.close();
+      }
+    });
+
+    it('calls back with an error for a column attribute it cannot write', async function () {
+      const sequelize = sqliteSequelize();
+      try {
+        await sequelize.query('CREATE TABLE odd (id INTEGER PRIMARY KEY)');
+        const describeTable = sequelize.getQueryInterface().describeTable.bind(sequelize.getQueryInterface());
+        sinon.stub(sequelize.getQueryInterface(), 'describeTable').callsFake(async (table) => {
+          const fields = await describeTable(table);
+          fields.id.surprise = { not: 'a string' };
+          return fields;
+        });
+        let failure;
+        await generate(sequelize, { tables: ['odd'] }).catch((err) => {
+          failure = err;
+        });
+        expect(String(failure)).to.match(/Expected a string column attribute, got object/);
+      } finally {
+        sinon.restore();
+        await sequelize.close();
+      }
     });
   });
 });

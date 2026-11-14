@@ -17,8 +17,18 @@
 - Fixed: `findById` on a table with an `acl` always failed with a 400 (it assigned an
   undeclared variable). It now applies the ACL to the lookup.
 - The npm package no longer includes `.claude/settings.local.json` or `CLAUDE.md`.
-- Unchanged, and worth knowing: `initialize()` still resolves when startup fails (the error
-  is logged and surfaces as an unhandled rejection).
+- **Fixed: startup failures now reject.** `initialize()` used to log the error and resolve,
+  leaving an unhandled rejection, so transom-core's `initialize()` (and any retry loop around
+  it) couldn't tell startup had failed. It now rejects with the error. That includes errors
+  defining the models (e.g. a static or method that already exists), which used to escape as
+  uncaught exceptions.
+- **Fixed: `config.retryOptions` is honoured.** The plugin's defaults (`max: 10`,
+  `timeout: 10000`, ...) used to overwrite it; now it overrides the defaults.
+- **Fixed: sqlite foreign keys no longer hang startup.** sqlite reports `references` and
+  `unique` on each column; the metadata generator choked on the first (startup never
+  finished) and wrote the second as the string `"false"`. It now writes `references: {model,
+  key}` and `unique: true` where they apply. Any column the generator can't handle now fails
+  startup with an error instead of hanging.
 
 ## 1.0.16
 - Adding tests for handlerUtils

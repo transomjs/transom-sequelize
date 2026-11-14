@@ -77,8 +77,7 @@ class TransomSequelize {
    * Connects (with retries), regenerates and loads the table metadata, defines a model
    * per table, registers the Sequelize instance and adds the REST routes.
    *
-   * Startup errors are logged and the returned promise still resolves (as in every
-   * 5.x release); see the CHANGELOG.
+   * Startup errors are logged and reject the returned promise.
    */
   initialize = function (server: TransomServerLike, pluginOptions?: TransomSequelizeOptions): Promise<void> {
     let sequelize: Sequelize;
@@ -99,8 +98,9 @@ class TransomSequelize {
         }
       });
 
-      // Configure Promise retries on the initial database connection.
-      retryOptions = Object.assign({}, options.config.retryOptions, {
+      // Configure Promise retries on the initial database connection. The definition's
+      // retryOptions override these defaults.
+      retryOptions = Object.assign({
         max: 10, // maximum amount of tries
         timeout: 10000, // throw if no response or error within millisecond timeout
         match: [
@@ -113,7 +113,7 @@ class TransomSequelize {
           console.log(msg);
         }, // the function used for reporting; must have a (string, object) argument signature, where string is the message.
         name: "Transom.sequelize connection attempt",
-      });
+      }, options.config.retryOptions);
       delete options.config.retryOptions;
 
       // Sequelize wants them split out.
@@ -175,6 +175,17 @@ class TransomSequelize {
             if (err) {
               return reject(err);
             }
+            try {
+              defineModels();
+              resolve();
+            } catch (defineErr) {
+              // E.g. a duplicate model, static or method. Thrown here, it would escape
+              // the promise chain as an uncaught exception.
+              reject(defineErr);
+            }
+          });
+
+          function defineModels(): void {
             // For each table we have meta.
             const allTables = options.tables;
             const tables = Object.keys(allTables);
@@ -297,8 +308,7 @@ class TransomSequelize {
                 );
               }
             });
-            resolve();
-          });
+          }
         });
       })
       .then(() => {
@@ -308,9 +318,9 @@ class TransomSequelize {
       .catch((err: unknown) => {
         const message = typeof err === "object" && err !== null && Reflect.get(err, "message") ? Reflect.get(err, "message") : err;
         console.error("Unable to connect to the database:", message);
-        // Unchanged from 5.x: this rejection isn't returned, so initialize() resolves
-        // even when startup fails, and Node reports an unhandled rejection.
-        void Promise.reject(err);
+        // Fail initialize(), so transom-core's initialize() rejects and the app can
+        // retry or exit. (5.x resolved here and left an unhandled rejection.)
+        throw err;
       });
   };
 }

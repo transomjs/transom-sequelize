@@ -251,6 +251,29 @@ class SequelizeMeta {
       async.each(
         _.keys(self.apiTables),
         function (table, _callback) {
+          // Report a failure to the caller: thrown here (inside a promise callback), it
+          // would be lost and run() would never call back.
+          try {
+            text[table] = tableText(table);
+          } catch (tableErr) {
+            return _callback(tableErr instanceof Error ? tableErr : new Error(String(tableErr)));
+          }
+          return _callback(null);
+        },
+        function (eachErr) {
+          if (eachErr) {
+            return callback(eachErr);
+          }
+          if (self.options.directory && self.options.overwrite) {
+            return self.write(text, callback);
+          }
+          return callback(null, text);
+        },
+      );
+    }
+
+    /** The generated module text for one table. */
+    function tableText(table: string): string {
           const columns = self.apiTables[table] ?? {};
           const fields = _.keys(columns);
           // Spaces or Tabs?
@@ -431,6 +454,28 @@ class SequelizeMeta {
                   defaultValueText = _.trimStart(_.toString(defaultValueText), "N");
                   out += spaces + spaces + spaces + attr + ": " + String(defaultValueText);
                 }
+              } else if (attr === "unique") {
+                // sqlite reports unique as a boolean. Only `true` means anything, and the
+                // foreign-key check above may already be writing it.
+                if (attrValue === true && !isUnique) {
+                  out += spaces + spaces + spaces + "unique: true";
+                } else {
+                  return true;
+                }
+              } else if (attr === "references") {
+                // sqlite reports a foreign key on the column as {model, key}. Other dialects
+                // report foreign keys through `foreignKey`, which wins if present.
+                const references: unknown = attrValue;
+                const model: unknown = _.isObject(references) ? Reflect.get(references, "model") : undefined;
+                const key: unknown = _.isObject(references) ? Reflect.get(references, "key") : undefined;
+                if (!foreignKey?.isForeignKey && typeof model === "string" && typeof key === "string") {
+                  out += spaces + spaces + spaces + "references: {\n";
+                  out += spaces + spaces + spaces + spaces + `model: '${model}',\n`;
+                  out += spaces + spaces + spaces + spaces + `key: '${key}'\n`;
+                  out += spaces + spaces + spaces + "}";
+                } else {
+                  return true;
+                }
               } else if (attr === "type" && column.type.indexOf("ENUM") === 0) {
                 out += spaces + spaces + spaces + attr + ": DataTypes." + column.type;
               } else {
@@ -535,16 +580,7 @@ ${spaces + spaces + spaces}},\n`;
 
           // That's the end of attributes!
           out += "}; // End of metadata\n";
-          text[table] = out;
-          _callback(null);
-        },
-        function () {
-          if (self.options.directory && self.options.overwrite) {
-            return self.write(text, callback);
-          }
-          return callback(null, text);
-        },
-      );
+          return out;
     }
   }
 
