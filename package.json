@@ -54,7 +54,7 @@
     "prepublishOnly": "npm run build",
     "deploy": "np"
   },
-  "version": "5.0.2",
+  "version": "6.0.0",
   "types": "dist/index.d.ts",
   "files": [
     "dist/",
